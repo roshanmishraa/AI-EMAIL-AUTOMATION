@@ -1,3 +1,14 @@
 import { create } from 'zustand'
-interface EmailStore { filter: object; setFilter: (f: object) => void }
-export const useEmailStore = create<EmailStore>(set => ({ filter: {}, setFilter: f => set({ filter: f }) }))
+import { EmailFilterParams } from '../api/emailsApi'
+
+interface EmailStore {
+  filter: EmailFilterParams
+  setFilter: (f: EmailFilterParams) => void
+  clearFilter: () => void
+}
+
+export const useEmailStore = create<EmailStore>(set => ({
+  filter: {},
+  setFilter: f => set({ filter: f }),
+  clearFilter: () => set({ filter: {} }),
+}))

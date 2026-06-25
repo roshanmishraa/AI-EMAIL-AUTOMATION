@@ -1,1 +1,9 @@
-export interface DashboardStats { total_emails: number; auto_replied: number; escalated: number; pending: number; avg_confidence: number; category_breakdown: Record<string,number>; sentiment_breakdown: Record<string,number> }
+export interface DashboardStats {
+  total_emails: number
+  processed: number
+  replied: number
+  escalated: number
+  avg_confidence: number
+  category_distribution: Record<string, number>
+  sentiment_distribution: Record<string, number>
+}

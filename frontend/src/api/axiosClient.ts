@@ -7,4 +7,12 @@ const client = axios.create({
   },
 })
 
+client.interceptors.response.use(
+  res => res,
+  err => {
+    console.error('[API Error]', err.response?.status, err.response?.data)
+    return Promise.reject(err)
+  }
+)
+
 export default client
