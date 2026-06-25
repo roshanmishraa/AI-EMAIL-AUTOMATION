@@ -1,0 +1,97 @@
+# =========================
+#  ENV FILES (SECRETS)
+# =========================
+.env
+.env.*
+*.env
+
+# =========================
+#  PYTHON
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+venv/
+env/
+aivenv/
+.venv/
+
+# =========================
+#  FASTAPI / BACKEND SPECIFIC
+# =========================
+storage/
+*.sqlite3
+*.db
+*.db-journal
+
+# logs
+logs/
+*.log
+
+# =========================
+#  AI / TOKEN FILES
+# =========================
+token.json
+gmail_token.json
+*.token.json
+
+# =========================
+#  TEST / CACHE
+# =========================
+.pytest_cache/
+.mypy_cache/
+.coverage
+
+# =========================
+#  FRONTEND (REACT / VITE)
+# =========================
+node_modules/
+dist/
+build/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =========================
+#  OS FILES
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+#  IDE / EDITORS
+# =========================
+.vscode/
+.idea/
+
+# =========================
+#  DOCKER (optional ignore build cache)
+# =========================
+*.pid
+
+# =========================
+
+# =========================
+debug/
+tmp/
+temp/

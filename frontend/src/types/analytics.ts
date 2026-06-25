@@ -1,0 +1,1 @@
+export interface DashboardStats { total_emails: number; auto_replied: number; escalated: number; pending: number; avg_confidence: number; category_breakdown: Record<string,number>; sentiment_breakdown: Record<string,number> }
