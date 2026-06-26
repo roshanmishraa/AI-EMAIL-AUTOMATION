@@ -1,9 +1,12 @@
 export interface KBDoc {
   id: number
-  filename?: string
-  title?: string
-  source_type?: string
-  file_path?: string
-  chunks?: number
-  created_at?: string
+  title: string        // backend returns "title" (filename)
+  source_type: string  // "pdf" | "docx" | "txt"
+  chunk_count: number  // backend returns "chunk_count"
+  created_at: string
+}
+
+export interface KBListOut {
+  total: number
+  documents: KBDoc[]
 }

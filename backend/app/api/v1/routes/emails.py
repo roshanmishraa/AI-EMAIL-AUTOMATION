@@ -16,11 +16,37 @@ router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 
 # ──────────────────────────────────────────
+# IMPORTANT: Fixed-path routes MUST come before /{email_id}
+# otherwise FastAPI matches "trigger-fetch" as an email_id integer
+# ──────────────────────────────────────────
+
+# TRIGGER GMAIL FETCH (manual) — MUST be before /{email_id}
+@router.post("/trigger-fetch")
+async def trigger_email_fetch():
+    from app.workers.tasks.email_poller import fetch_new_emails_task
+    fetch_new_emails_task.delay()
+    return {"message": "Gmail fetch triggered — check Celery logs"}
+
+
+# GET THREAD — all emails in a Gmail thread — MUST be before /{email_id}
+@router.get("/thread/{gmail_thread_id}", response_model=EmailListOut)
+async def get_thread(gmail_thread_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Email)
+        .options(selectinload(Email.replies))
+        .where(Email.thread_id == gmail_thread_id)
+        .order_by(Email.received_at.asc())
+    )
+    emails = result.scalars().all()
+    return {"emails": emails, "total": len(emails)}
+
+
+# ──────────────────────────────────────────
 # LIST EMAILS  (with replies eagerly loaded)
 # ──────────────────────────────────────────
 @router.get("/", response_model=EmailListOut)
 async def list_emails(
-    db: AsyncSession = Depends(get_db),
+    db:        AsyncSession = Depends(get_db),
     status:    str = Query(None),
     category:  str = Query(None),
     sentiment: str = Query(None),
@@ -29,7 +55,7 @@ async def list_emails(
 ):
     query = (
         select(Email)
-        .options(selectinload(Email.replies))   # eager-load replies so EmailOut can include them
+        .options(selectinload(Email.replies))
         .order_by(Email.received_at.desc())
     )
 
@@ -65,22 +91,6 @@ async def get_email(email_id: int, db: AsyncSession = Depends(get_db)):
 
 
 # ──────────────────────────────────────────
-# GET THREAD — all emails in a Gmail thread
-# ──────────────────────────────────────────
-@router.get("/thread/{gmail_thread_id}", response_model=EmailListOut)
-async def get_thread(gmail_thread_id: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Email)
-        .options(selectinload(Email.replies))
-        .where(Email.thread_id == gmail_thread_id)
-        .order_by(Email.received_at.asc())
-    )
-    emails = result.scalars().all()
-
-    return {"emails": emails, "total": len(emails)}
-
-
-# ──────────────────────────────────────────
 # APPROVE & SEND REPLY
 # ──────────────────────────────────────────
 @router.post("/{email_id}/reply")
@@ -107,7 +117,10 @@ async def approve_and_send_reply(
     reply = reply_result.scalars().first()
 
     if not reply:
-        raise HTTPException(status_code=404, detail="No AI reply found — run /process first")
+        raise HTTPException(
+            status_code=404,
+            detail="No AI reply found — run /process first",
+        )
 
     # Attempt Gmail send
     sent = False
@@ -153,16 +166,6 @@ async def escalate_email(email_id: int, db: AsyncSession = Depends(get_db)):
     await db.commit()
 
     return {"message": "Email escalated successfully"}
-
-
-# ──────────────────────────────────────────
-# TRIGGER GMAIL FETCH (manual)
-# ──────────────────────────────────────────
-@router.post("/trigger-fetch")
-async def trigger_email_fetch():
-    from app.workers.tasks.email_poller import fetch_new_emails_task
-    fetch_new_emails_task.delay()
-    return {"message": "Gmail fetch triggered — check Celery logs"}
 
 
 # ──────────────────────────────────────────

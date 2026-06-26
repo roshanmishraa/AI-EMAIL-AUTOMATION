@@ -1,45 +1,31 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import declarative_base
 from app.core.config import settings
 
-# -----------------------------
-# BASE
-# -----------------------------
-Base = declarative_base()
-
-# -----------------------------
-# DATABASE URL FIX (IMPORTANT)
-# -----------------------------
+# ──────────────────────────────────────────
+# DATABASE URL
+# ──────────────────────────────────────────
 DATABASE_URL = settings.DATABASE_URL
 
-# If SQLite is used, ensure async driver
-if DATABASE_URL.startswith("sqlite"):
-    DATABASE_URL = DATABASE_URL.replace(
-        "sqlite:///",
-        "sqlite+aiosqlite:///"
-    )
+# Ensure correct async driver for SQLite
+if DATABASE_URL.startswith("sqlite") and "+aiosqlite" not in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.replace("sqlite:///", "sqlite+aiosqlite:///")
 
-# -----------------------------
+# ──────────────────────────────────────────
 # ENGINE
-# -----------------------------
+# ──────────────────────────────────────────
 engine = create_async_engine(
     DATABASE_URL,
     echo=settings.APP_ENV == "development",
     pool_pre_ping=True,
+    # SQLite-specific: avoid "database is locked" in concurrent Celery tasks
+    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
 )
 
-# -----------------------------
-# SESSION
-# -----------------------------
+# ──────────────────────────────────────────
+# SESSION FACTORY
+# ──────────────────────────────────────────
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
     expire_on_commit=False,
 )
-
-# -----------------------------
-# DEPENDENCY (FOR FASTAPI)
-# -----------------------------
-async def get_db():
-    async with AsyncSessionLocal() as session:
-        yield session

@@ -1,75 +1,50 @@
-import { Email } from '../types/email'
-import { formatDateTime } from '../types/date'
-import Badge from '../common/Badge'
+import { useEmails } from '../hooks/useEmails'
+import { useTriggerFetch } from '../hooks/useEmails'
+import { useEmailStore } from '../store/emailStore'
+import Topbar from '../components/layout/Topbar'
+import EmailList from '../components/inbox/EmailList'
+import EmailFilters from '../components/inbox/EmailFilters'
+import { RefreshCw } from 'lucide-react'
 
-interface ThreadViewProps {
-  emails: Email[]           // all messages in the thread, oldest first
-  currentEmailId: number   // highlight the selected one
-}
+export default function InboxPage() {
+  const { filter } = useEmailStore()
+  const { data, isLoading, isError } = useEmails(filter)
+  const triggerFetch = useTriggerFetch()
 
-export default function ThreadView({ emails, currentEmailId }: ThreadViewProps) {
-  if (emails.length <= 1) return null   // no thread to show if only one message
+  const emails = data?.emails ?? []
 
   return (
-    <div className="border rounded-xl bg-white overflow-hidden">
-      <div className="px-4 py-3 border-b bg-gray-50">
-        <span className="text-sm font-medium text-gray-700">
-          Thread history · {emails.length} messages
-        </span>
+    <div className="flex flex-col h-full">
+      <Topbar
+        title="Inbox"
+        subtitle={`${data?.total ?? 0} emails`}
+        actions={
+          <button
+            onClick={() => triggerFetch.mutate()}
+            disabled={triggerFetch.isPending}
+            className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 bg-white px-3 py-1.5 rounded-lg disabled:opacity-60 transition-colors"
+          >
+            <RefreshCw
+              size={14}
+              className={triggerFetch.isPending ? 'animate-spin' : ''}
+            />
+            {triggerFetch.isPending ? 'Fetching…' : 'Fetch Gmail'}
+          </button>
+        }
+      />
+
+      <div className="px-6 py-3 border-b bg-white">
+        <EmailFilters />
       </div>
 
-      <div className="divide-y divide-gray-50">
-        {emails.map((email, idx) => {
-          const isCurrent = email.id === currentEmailId
-          return (
-            <div
-              key={email.id}
-              className={`px-4 py-3 ${isCurrent ? 'bg-blue-50 border-l-2 border-l-blue-500' : 'hover:bg-gray-50'}`}
-            >
-              <div className="flex items-start justify-between gap-3 mb-1.5">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-medium text-xs shrink-0">
-                    {email.sender?.[0]?.toUpperCase() ?? '?'}
-                  </div>
-                  <span className="text-sm font-medium text-gray-800 truncate">
-                    {email.sender}
-                  </span>
-                  {isCurrent && (
-                    <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium shrink-0">
-                      Current
-                    </span>
-                  )}
-                </div>
-                <span className="text-xs text-gray-400 shrink-0">
-                  {formatDateTime(email.received_at)}
-                </span>
-              </div>
+      {isError && (
+        <div className="mx-6 mt-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          Failed to load emails — check that the backend is running on port 8000.
+        </div>
+      )}
 
-              <p className="text-xs text-gray-600 ml-8 line-clamp-2 leading-relaxed">
-                {email.body?.slice(0, 200)}
-                {(email.body?.length ?? 0) > 200 ? '…' : ''}
-              </p>
-
-              {(email.status || email.sentiment || email.category) && (
-                <div className="flex gap-1.5 mt-2 ml-8 flex-wrap">
-                  {email.status && (
-                    <Badge label={email.status} variant="status" value={email.status} />
-                  )}
-                  {email.sentiment && (
-                    <Badge label={email.sentiment} variant="sentiment" value={email.sentiment} />
-                  )}
-                  {email.category && (
-                    <Badge
-                      label={email.category.replace('_', ' ')}
-                      variant="category"
-                      value={email.category}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          )
-        })}
+      <div className="flex-1 overflow-auto bg-white">
+        <EmailList emails={emails} loading={isLoading} />
       </div>
     </div>
   )

@@ -9,14 +9,15 @@ from app.models.reply import ReplySource
 # REPLY NESTED (inline so EmailOut can use it without circular import)
 # ──────────────────────────────────────────
 class ReplyInline(BaseModel):
-    id: int
-    generated_by: ReplySource
-    reply_text: str
-    tone_used: Optional[str] = None
+    id:               int
+    email_id:         int          # FIXED: was missing — frontend types/email.ts expects this
+    generated_by:     ReplySource
+    reply_text:       str
+    tone_used:        Optional[str] = None
     confidence_score: Optional[float] = None
-    is_approved: bool
-    sent_at: Optional[datetime] = None
-    created_at: datetime
+    is_approved:      bool
+    sent_at:          Optional[datetime] = None
+    created_at:       datetime
 
     class Config:
         from_attributes = True
@@ -26,22 +27,22 @@ class ReplyInline(BaseModel):
 # SINGLE EMAIL OUT
 # ──────────────────────────────────────────
 class EmailOut(BaseModel):
-    id: int
+    id:               int
     gmail_message_id: str
-    thread_id: Optional[str] = None   # Gmail thread ID string
-    sender: str
-    subject: str
-    body: str
-    received_at: datetime
+    thread_id:        Optional[str] = None
+    sender:           str
+    subject:          str
+    body:             str
+    received_at:      datetime
 
     # AI fields — nullable before processing
-    category: Optional[EmailCategory] = None
-    sentiment: Optional[EmailSentiment] = None
-    intent: Optional[str] = None       # stored as TEXT in DB
+    category:         Optional[EmailCategory] = None
+    sentiment:        Optional[EmailSentiment] = None
+    intent:           Optional[str] = None
     confidence_score: Optional[float] = None
-    status: EmailStatus
+    status:           EmailStatus
 
-    # Replies — the frontend needs this to show AI draft
+    # Replies — populated after /process
     replies: List[ReplyInline] = []
 
     class Config:
@@ -53,4 +54,4 @@ class EmailOut(BaseModel):
 # ──────────────────────────────────────────
 class EmailListOut(BaseModel):
     emails: List[EmailOut]
-    total: int
+    total:  int

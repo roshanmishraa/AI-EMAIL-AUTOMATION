@@ -9,15 +9,19 @@ from app.models.email import EmailCategory, EmailSentiment
 # -----------------------------
 CONFIDENCE_THRESHOLD = 70.0
 
-
 LEGAL_KEYWORDS = [
     "lawsuit", "legal action", "attorney", "lawyer", "gdpr",
     "sue", "court", "compliance", "breach", "violation"
 ]
 
+SENSITIVE_ATTACHMENT_KEYWORDS = [
+    "attached", "attachment", "enclosed", "document", "medical",
+    "prescription", "legal document", "contract", "certificate"
+]
+
 
 # -----------------------------
-# ESCALATION ENGINE (FIXED)
+# ESCALATION ENGINE
 # -----------------------------
 def check_escalation(
     category: str,
@@ -41,6 +45,13 @@ def check_escalation(
 
     if any(kw in body_lower for kw in LEGAL_KEYWORDS):
         return EscalationReason.legal
+
+    # -----------------------------
+    # RULE 1b: SENSITIVE ATTACHMENT
+    # -----------------------------
+    if any(kw in body_lower for kw in SENSITIVE_ATTACHMENT_KEYWORDS):
+        if category in ("legal", "billing"):
+            return EscalationReason.sensitive_attachment
 
     # -----------------------------
     # RULE 2: ANGRY + REPEAT ISSUE
