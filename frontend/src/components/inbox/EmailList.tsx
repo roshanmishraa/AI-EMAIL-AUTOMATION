@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Email } from '../../types/email'
 import Badge from '../common/Badge'
-import { formatDistanceToNow } from '../../utils/date'
+import { formatDistanceToNow } from '../../types/date'
 
 interface EmailListProps {
   emails: Email[]
