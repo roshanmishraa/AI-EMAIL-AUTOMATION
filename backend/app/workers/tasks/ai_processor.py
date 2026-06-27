@@ -33,7 +33,7 @@ from app.services.ai.preprocessor import clean_email_body
 from app.services.ai.classifier import classify_email
 from app.services.ai.sentiment import detect_sentiment
 from app.services.ai.reply_generator import generate_reply
-from app.services.escalation_service import check_escalation
+from app.services.escalation_service import check_escalation, CONFIDENCE_THRESHOLD  # ← ADDED CONFIDENCE_THRESHOLD import
 from app.services.notification_service import send_escalation_alert
 from app.services.gmail_service import send_reply as gmail_send_reply
 
@@ -205,8 +205,10 @@ async def _pipeline(email_id: int):
                 thread_message_count=thread_count,
             )
 
-        # LLM also flagged escalation → use if no other reason found
-        if llm_esc_flag and escalation_reason is None:
+        # ── FIX: LLM escalation flag sirf tab use karo jab confidence bhi low ho ──
+        # BEFORE (buggy): if llm_esc_flag and escalation_reason is None:
+        # AFTER  (fixed):  confidence check bhi lagaya → high-conf emails ab PROCESSED rahenge
+        if llm_esc_flag and escalation_reason is None and final_conf < CONFIDENCE_THRESHOLD:
             escalation_reason = EscalationReason.low_confidence
 
         # ── STEP 7: Save EmailReply ─────────────────────
