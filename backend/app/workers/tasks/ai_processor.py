@@ -208,8 +208,8 @@ async def _pipeline(email_id: int):
         # ── FIX: LLM escalation flag sirf tab use karo jab confidence bhi low ho ──
         # BEFORE (buggy): if llm_esc_flag and escalation_reason is None:
         # AFTER  (fixed):  confidence check bhi lagaya → high-conf emails ab PROCESSED rahenge
-        if llm_esc_flag and escalation_reason is None and final_conf < CONFIDENCE_THRESHOLD:
-            escalation_reason = EscalationReason.low_confidence
+        # if llm_esc_flag and escalation_reason is None and final_conf < CONFIDENCE_THRESHOLD:
+        #     escalation_reason = EscalationReason.low_confidence
 
         # ── STEP 7: Save EmailReply ─────────────────────
         reply = EmailReply(
