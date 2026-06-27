@@ -8,22 +8,28 @@ interface Props {
 }
 
 const SENTIMENT_CONFIG: Record<string, { color: string; icon: string }> = {
-  angry: { color: '#ef4444', icon: '😡' },
+  angry:      { color: '#ef4444', icon: '😡' },
   frustrated: { color: '#f97316', icon: '😤' },
-  neutral: { color: '#9ca3af', icon: '😐' },
-  happy: { color: '#22c55e', icon: '😊' },
-  sad: { color: '#60a5fa', icon: '😢' },
+  neutral:    { color: '#9ca3af', icon: '😐' },
+  happy:      { color: '#22c55e', icon: '😊' },
+  sad:        { color: '#60a5fa', icon: '😢' },
 }
+
+const cleanKey = (raw: string) =>
+  raw.replace('EmailSentiment.', '').replace('EmailCategory.', '')
 
 export default function SentimentChart({ distribution }: Props) {
   const data = Object.entries(distribution)
     .filter(([, v]) => v > 0)
-    .map(([key, value]) => ({
-      key,
-      name: `${SENTIMENT_CONFIG[key]?.icon ?? ''} ${key}`,
-      value,
-      color: SENTIMENT_CONFIG[key]?.color ?? '#9ca3af',
-    }))
+    .map(([raw, value]) => {
+      const key = cleanKey(raw)
+      return {
+        key,
+        name: `${SENTIMENT_CONFIG[key]?.icon ?? ''} ${key}`,
+        value,
+        color: SENTIMENT_CONFIG[key]?.color ?? '#9ca3af',
+      }
+    })
 
   if (data.length === 0) {
     return (

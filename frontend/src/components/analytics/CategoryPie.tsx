@@ -26,14 +26,20 @@ const ICONS: Record<string, string> = {
   feedback: '⭐',
 }
 
+const cleanKey = (raw: string) =>
+  raw.replace('EmailCategory.', '').replace('EmailSentiment.', '')
+
 export default function CategoryPie({ distribution }: Props) {
   const data = Object.entries(distribution)
     .filter(([, v]) => v > 0)
-    .map(([name, value]) => ({
-      name: `${ICONS[name] ?? ''} ${name.replace('_', ' ')}`,
-      key: name,
-      value,
-    }))
+    .map(([name, value]) => {
+      const key = cleanKey(name)
+      return {
+        name: `${ICONS[key] ?? ''} ${key.replace('_', ' ')}`,
+        key,
+        value,
+      }
+    })
 
   if (data.length === 0) {
     return (
@@ -59,12 +65,10 @@ export default function CategoryPie({ distribution }: Props) {
             <Cell key={entry.key} fill={COLORS[entry.key] ?? '#9ca3af'} />
           ))}
         </Pie>
-
         <Tooltip
           formatter={(value: number, name: string) => [value, name]}
           contentStyle={{ fontSize: 12, borderRadius: 8 }}
         />
-
         <Legend
           iconType="circle"
           iconSize={8}

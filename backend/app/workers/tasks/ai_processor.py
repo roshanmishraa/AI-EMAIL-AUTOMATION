@@ -7,6 +7,7 @@ Full pipeline for a single email:
   2.  clean_email_body()
   3.  classify_email()          → category + confidence
   4.  detect_sentiment()        → sentiment + intent + vip_signal
+  4.5 Early exit for SPAM       → skip RAG/LLM entirely
   5.  generate_reply()          → draft reply (with RAG)
   6.  check_escalation()        → escalation reason or None
   7.  Save EmailReply to DB
@@ -111,6 +112,51 @@ async def _pipeline(email_id: int):
             sentiment = "neutral"
             intent    = "general"
             is_vip    = False
+
+        # ── STEP 4.5: Early exit for SPAM ───────────────
+        # Skip RAG + LLM entirely for spam/irrelevant emails
+        # to avoid token waste and hallucinated replies
+        SKIP_REPLY_CATEGORIES = {"spam"}
+
+        if category in SKIP_REPLY_CATEGORIES:
+            print(f"[AIProcessor] Email {email_id} is SPAM — skipping RAG/LLM entirely")
+
+            # Save minimal reply placeholder (no LLM used)
+            reply = EmailReply(
+                email_id=email_id,
+                generated_by=ReplySource.ai,
+                reply_text="[SPAM — No reply generated. This email was identified as spam or irrelevant to BeastLife customer support.]",
+                tone_used="none",
+                confidence_score=cls_conf,
+                is_approved=False,
+                created_at=datetime.datetime.utcnow(),
+            )
+            db.add(reply)
+
+            # Update email fields
+            email.category         = category
+            email.sentiment        = sentiment
+            email.intent           = str(intent)
+            email.confidence_score = cls_conf
+            email.status           = EmailStatus.escalated
+
+            await db.flush()
+
+            # Save escalation record
+            esc = Escalation(
+                email_id=email_id,
+                reason=EscalationReason.low_confidence,
+                created_at=datetime.datetime.utcnow(),
+            )
+            db.add(esc)
+
+            await db.commit()
+
+            print(
+                f"[AIProcessor] ✓ Email {email_id} | category=spam | "
+                f"RAG skipped | LLM skipped | tokens saved ✅"
+            )
+            return  # ← Pipeline stops here for spam
 
         # ── STEP 5: Generate reply (RAG included) ───────
         try:
