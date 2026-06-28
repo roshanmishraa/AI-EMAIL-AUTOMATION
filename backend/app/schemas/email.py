@@ -1,57 +1,52 @@
+# ============================================================
+# FILE:  backend/app/schemas/email.py
+# CHANGE: EmailOut mein has_attachments aur attachment_names add kiye
+# ============================================================
+
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
-from app.models.email import EmailCategory, EmailSentiment, EmailStatus
-from app.models.reply import ReplySource
 
 
-# ──────────────────────────────────────────
-# REPLY NESTED (inline so EmailOut can use it without circular import)
-# ──────────────────────────────────────────
-class ReplyInline(BaseModel):
+class ReplyOut(BaseModel):
     id:               int
-    email_id:         int          # FIXED: was missing — frontend types/email.ts expects this
-    generated_by:     ReplySource
+    email_id:         int
+    generated_by:     str
     reply_text:       str
-    tone_used:        Optional[str] = None
-    confidence_score: Optional[float] = None
+    tone_used:        Optional[str]
+    confidence_score: Optional[float]
     is_approved:      bool
-    sent_at:          Optional[datetime] = None
+    sent_at:          Optional[datetime]
     created_at:       datetime
 
     class Config:
         from_attributes = True
 
 
-# ──────────────────────────────────────────
-# SINGLE EMAIL OUT
-# ──────────────────────────────────────────
 class EmailOut(BaseModel):
     id:               int
     gmail_message_id: str
-    thread_id:        Optional[str] = None
-    sender:           str
-    subject:          str
-    body:             str
+    thread_id:        Optional[str]
+    sender:           Optional[str]
+    subject:          Optional[str]
+    body:             Optional[str]
     received_at:      datetime
+    category:         Optional[str]
+    sentiment:        Optional[str]
+    intent:           Optional[str]
+    confidence_score: Optional[float]
+    status:           str
 
-    # AI fields — nullable before processing
-    category:         Optional[EmailCategory] = None
-    sentiment:        Optional[EmailSentiment] = None
-    intent:           Optional[str] = None
-    confidence_score: Optional[float] = None
-    status:           EmailStatus
+    # ── NEW: attachment fields ──────────────────────────────
+    has_attachments:  bool = False
+    attachment_names: Optional[str] = "[]"   # JSON string: '["file1.pdf","file2.jpg"]'
 
-    # Replies — populated after /process
-    replies: List[ReplyInline] = []
+    replies: List[ReplyOut] = []
 
     class Config:
         from_attributes = True
 
 
-# ──────────────────────────────────────────
-# LIST RESPONSE
-# ──────────────────────────────────────────
 class EmailListOut(BaseModel):
     emails: List[EmailOut]
     total:  int

@@ -1,4 +1,10 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
+# ============================================================
+# FILE:  backend/app/api/v1/routes/kb.py
+# CHANGE: GET /kb/preview?email_id=X endpoint add kiya
+#         (sab kuch same, sirf naya route add hua end mein)
+# ============================================================
+
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -9,14 +15,15 @@ import datetime
 from app.core.deps import get_db, verify_api_key
 from app.core.config import settings
 
-from app.services.ai.rag import add_document_to_index
+from app.services.ai.rag import add_document_to_index, retrieve_relevant_chunks
 from app.models.knowledge_base import KnowledgeBase, KBChunk
+from app.models.email import Email                        # ← NEW
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 
 # ──────────────────────────────────────────
-# TEXT EXTRACTION HELPERS
+# TEXT EXTRACTION HELPERS (UNCHANGED)
 # ──────────────────────────────────────────
 def _extract_text_from_pdf(path: str) -> str:
     try:
@@ -42,7 +49,6 @@ def _extract_text_from_docx(path: str) -> str:
 
 def _read_file_content(file_path: str, filename: str) -> str:
     ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
-
     if ext == "pdf":
         return _extract_text_from_pdf(file_path)
     elif ext == "docx":
@@ -59,7 +65,7 @@ def _read_file_content(file_path: str, filename: str) -> str:
 
 
 # ──────────────────────────────────────────
-# UPLOAD KB DOCUMENT
+# UPLOAD KB DOCUMENT (UNCHANGED)
 # ──────────────────────────────────────────
 @router.post("/upload")
 async def upload_kb_document(
@@ -112,10 +118,7 @@ async def upload_kb_document(
 
 
 # ──────────────────────────────────────────
-# LIST KB DOCUMENTS
-# FIXED: response keys match frontend KBDoc type exactly
-#   - "title"        (not "filename")
-#   - "chunk_count"  (not "chunks")
+# LIST KB DOCUMENTS (UNCHANGED)
 # ──────────────────────────────────────────
 @router.get("/")
 async def list_kb_documents(db: AsyncSession = Depends(get_db)):
@@ -129,9 +132,9 @@ async def list_kb_documents(db: AsyncSession = Depends(get_db)):
         "documents": [
             {
                 "id":          d.id,
-                "title":       d.title,        # frontend expects "title"
+                "title":       d.title,
                 "source_type": d.source_type,
-                "chunk_count": d.chunk_count,  # frontend expects "chunk_count"
+                "chunk_count": d.chunk_count,
                 "created_at":  d.created_at.isoformat() if d.created_at else None,
             }
             for d in docs
@@ -140,7 +143,7 @@ async def list_kb_documents(db: AsyncSession = Depends(get_db)):
 
 
 # ──────────────────────────────────────────
-# DELETE KB DOCUMENT
+# DELETE KB DOCUMENT (UNCHANGED)
 # ──────────────────────────────────────────
 @router.delete("/{kb_id}")
 async def delete_kb_document(
@@ -158,3 +161,41 @@ async def delete_kb_document(
     await db.commit()
 
     return {"message": f"KB document '{doc.title}' deleted successfully"}
+
+
+# ──────────────────────────────────────────
+# NEW: CHUNK PREVIEW FOR A SPECIFIC EMAIL
+# GET /kb/preview?email_id=42
+# Returns which KB chunks would be used to generate reply for this email
+# ──────────────────────────────────────────
+@router.get("/preview")
+async def preview_chunks_for_email(
+    email_id: int = Query(..., description="ID of the email to preview chunks for"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Simulates the RAG retrieval that would happen when generating
+    a reply for the given email. Returns the top KB chunks.
+    """
+    # Fetch the email
+    email = await db.get(Email, email_id)
+    if not email:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    body     = email.body or ""
+    category = email.category.value if email.category else None
+
+    # Run the same retrieval the reply generator would use
+    chunks = await retrieve_relevant_chunks(
+        query=body,
+        category=category,
+        top_k=5,
+    )
+
+    return {
+        "email_id":       email_id,
+        "email_subject":  email.subject or "(no subject)",
+        "category":       category,
+        "chunks_found":   len(chunks),
+        "chunks":         chunks,
+    }

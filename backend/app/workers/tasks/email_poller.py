@@ -1,16 +1,8 @@
-"""
-Email Poller Celery Task
-========================
-Runs every 60 seconds (configured in celery_app.py beat_schedule).
-
-Steps:
-  1. Fetch unread emails from Gmail API
-  2. For each email, check if already in DB (by gmail_message_id)
-  3. If new → save Email to DB
-  4. Upsert EmailThread (create or increment message_count)
-  5. Apply "AI-Processed" label in Gmail to avoid re-fetching
-  6. Dispatch process_email_ai task
-"""
+# ============================================================
+# FILE:  backend/app/workers/tasks/email_poller.py
+# CHANGE: Email() object mein has_attachments + attachment_names
+#         fields ab populate hote hain (lines marked NEW)
+# ============================================================
 
 import asyncio
 import datetime
@@ -80,7 +72,7 @@ async def _fetch_and_save():
             thread = thread_result.scalar_one_or_none()
 
             if thread:
-                thread.message_count  = (thread.message_count or 0) + 1
+                thread.message_count   = (thread.message_count or 0) + 1
                 thread.last_message_at = datetime.datetime.utcnow()
             else:
                 thread = EmailThread(
@@ -94,13 +86,16 @@ async def _fetch_and_save():
 
             # ── 4. Save Email ────────────────────────────
             email = Email(
-                gmail_message_id=gmail_id,
-                thread_id=thread_id,
-                sender=raw.get("sender", ""),
-                subject=raw.get("subject", ""),
-                body=raw.get("body", ""),
-                received_at=datetime.datetime.utcnow(),
-                status=EmailStatus.new,
+                gmail_message_id = gmail_id,
+                thread_id        = thread_id,
+                sender           = raw.get("sender", ""),
+                subject          = raw.get("subject", ""),
+                body             = raw.get("body", ""),
+                received_at      = datetime.datetime.utcnow(),
+                status           = EmailStatus.new,
+                # ── NEW: attachment fields ──────────────
+                has_attachments  = raw.get("has_attachments", False),
+                attachment_names = raw.get("attachment_names", "[]"),
             )
             db.add(email)
             await db.flush()   # get email.id
