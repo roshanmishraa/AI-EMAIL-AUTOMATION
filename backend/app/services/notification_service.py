@@ -2,6 +2,9 @@
 # FILE:  backend/app/services/notification_service.py
 # CHANGE: Slack ke saath ab agent ko email bhi jaata hai
 #         jab bhi koi email escalate hoti hai
+# FIX:    Hardcoded localhost:5173 → settings.FRONTEND_URL
+#         (production deploy mein Slack/email links kaam karein,
+#          sirf local dev mein hi localhost na point karein)
 # ============================================================
 
 import httpx
@@ -16,11 +19,12 @@ from app.core.config import settings
 # SLACK ALERT
 # ──────────────────────────────────────────
 async def _send_slack_alert(email_id: int, reason: str) -> bool:
+    frontend_url = settings.FRONTEND_URL or "http://localhost:5173"
     message = f"""
 🚨 ESCALATION ALERT
 Email ID: {email_id}
 Reason: {reason}
-Dashboard: http://localhost:5173/email/{email_id}
+Dashboard: {frontend_url}/email/{email_id}
 """
     if not settings.SLACK_WEBHOOK_URL:
         print(f"[SLACK STUB] {message}")
@@ -53,6 +57,8 @@ def _send_email_alert(email_id: int, reason: str) -> bool:
         print("[Notification] SMTP_USER or SMTP_PASS not configured — skipping email alert")
         return False
 
+    frontend_url = settings.FRONTEND_URL or "http://localhost:5173"
+
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = f"[BeastLife Support] Escalation: Email #{email_id} needs review"
@@ -65,7 +71,7 @@ Escalation Alert — Action Required
 
 Email ID : {email_id}
 Reason   : {reason}
-Link     : http://localhost:5173/email/{email_id}
+Link     : {frontend_url}/email/{email_id}
 
 Please review this email in the support dashboard.
 
@@ -82,7 +88,7 @@ Please review this email in the support dashboard.
     <tr><td style="padding:6px 0;color:#555;">Reason</td><td><strong>{reason}</strong></td></tr>
   </table>
   <div style="margin-top:24px;">
-    <a href="http://localhost:5173/email/{email_id}"
+    <a href="{frontend_url}/email/{email_id}"
        style="background:#3182ce;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">
       Open in Dashboard
     </a>

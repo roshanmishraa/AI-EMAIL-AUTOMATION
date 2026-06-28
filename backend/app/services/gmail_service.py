@@ -8,6 +8,11 @@
 #         - fetch_unread_emails() ab user_token parameter leta hai
 #         - send_reply() ab user_token parameter leta hai
 #         - apply_label() ab user_token parameter leta hai
+#         - FIX: PKCE autogenerate_code_verifier=False — kyunki har
+#           request pe naya Flow object banta hai, code_verifier
+#           persist nahi hota, isliye token exchange "invalid_grant:
+#           Missing code verifier" se fail ho raha tha. Confidential
+#           client (client_secret hai) ke liye PKCE zaroori nahi hai.
 # ============================================================
 
 from google.oauth2.credentials import Credentials
@@ -50,6 +55,7 @@ def get_oauth_flow() -> Flow:
         client_config,
         scopes=SCOPES,
         redirect_uri=settings.GMAIL_REDIRECT_URI,
+        autogenerate_code_verifier=False,   # ← FIX: PKCE disabled (confidential client, client_secret already present)
     )
     return flow
 

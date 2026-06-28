@@ -135,16 +135,19 @@ async def oauth_callback(code: str, db: AsyncSession = Depends(get_db)):
 
         # Frontend pe redirect karo — email query param mein bhejo
         # Frontend is email ko store karke API calls mein use karega
+        # FIX: /login? pe redirect karo, root / pe nahi —
+        # kyunki root route ProtectedRoute hai aur unauthenticated user ko
+        # /login pe bhej deta hai jisse query params (auth=success&...) drop ho jaate the
         frontend_url = settings.FRONTEND_URL or "http://localhost:5173"
         return RedirectResponse(
-            url=f"{frontend_url}/?auth=success&email={user_email}&user_id={user.id}"
+            url=f"{frontend_url}/login?auth=success&email={user_email}&user_id={user.id}"
         )
 
     except Exception as e:
         logger.error(f"OAuth callback failed: {e}")
         frontend_url = settings.FRONTEND_URL or "http://localhost:5173"
         return RedirectResponse(
-            url=f"{frontend_url}/?auth=error&reason=oauth_failed"
+            url=f"{frontend_url}/login?auth=error&reason=oauth_failed"
         )
 
 

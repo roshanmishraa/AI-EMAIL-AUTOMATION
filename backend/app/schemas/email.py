@@ -1,6 +1,8 @@
 # ============================================================
 # FILE:  backend/app/schemas/email.py
 # CHANGE: EmailOut mein has_attachments aur attachment_names add kiye
+#         NEW: escalations field add kiya — taaki frontend ko pata chale
+#         KIS reason se email escalate hui (legal/vip/low_confidence/etc.)
 # ============================================================
 
 from pydantic import BaseModel
@@ -18,6 +20,19 @@ class ReplyOut(BaseModel):
     is_approved:      bool
     sent_at:          Optional[datetime]
     created_at:       datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── NEW: Escalation info, taaki frontend "kyun escalated hua" dikha sake ──
+class EscalationOut(BaseModel):
+    id:          int
+    reason:      str
+    status:      str
+    notes:       Optional[str]
+    created_at:  Optional[datetime]
+    resolved_at: Optional[datetime]
 
     class Config:
         from_attributes = True
@@ -41,7 +56,8 @@ class EmailOut(BaseModel):
     has_attachments:  bool = False
     attachment_names: Optional[str] = "[]"   # JSON string: '["file1.pdf","file2.jpg"]'
 
-    replies: List[ReplyOut] = []
+    replies:     List[ReplyOut]     = []
+    escalations: List[EscalationOut] = []   # ← NEW
 
     class Config:
         from_attributes = True

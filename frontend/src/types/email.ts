@@ -12,6 +12,26 @@ export type EmailCategory =
 
 export type EmailSentiment = 'angry' | 'frustrated' | 'neutral' | 'happy' | 'sad'
 
+// NEW: escalation reason/status types — backend ke Enum se match karte hain
+export type EscalationReason =
+  | 'legal'
+  | 'vip'
+  | 'low_confidence'
+  | 'angry_repeat'
+  | 'sensitive_attachment'
+  | 'manual_review'
+
+export type EscalationStatusType = 'open' | 'in_progress' | 'resolved'
+
+export interface Escalation {
+  id: number
+  reason: EscalationReason
+  status: EscalationStatusType
+  notes: string | null
+  created_at: string | null
+  resolved_at: string | null
+}
+
 export interface EmailReply {
   id: number
   email_id: number
@@ -37,7 +57,10 @@ export interface Email {
   intent: string | null
   confidence_score: number | null
   status: EmailStatus
+  has_attachments: boolean        // NEW: pehle missing tha
+  attachment_names: string | null // NEW: pehle missing tha (JSON string)
   replies: EmailReply[]
+  escalations: Escalation[]       // NEW
 }
 
 export interface EmailListOut {
@@ -58,4 +81,16 @@ export function getLatestAIDraft(email: Email): EmailReply | null {
     .sort((a, b) => b.id - a.id)
 
   return aiReplies[0] ?? null
+}
+
+/**
+ * NEW: Returns the latest (open or in_progress) escalation for an email,
+ * or null if none/all resolved. Used by AIReplyPanel to show the reason
+ * and the Resolve button.
+ */
+export function getLatestEscalation(email: Email): Escalation | null {
+  if (!email.escalations || email.escalations.length === 0) return null
+
+  const sorted = [...email.escalations].sort((a, b) => b.id - a.id)
+  return sorted[0] ?? null
 }

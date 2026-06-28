@@ -20,6 +20,12 @@ export const approveReply = (id: number) =>
 export const escalateEmail = (id: number) =>
   client.post(`/emails/${id}/escalate`)
 
+// NEW: human review complete → escalation resolve karta hai
+export const resolveEscalation = (id: number, notes?: string) =>
+  client.post(`/emails/${id}/resolve-escalation`, null, {
+    params: notes ? { notes } : undefined,
+  })
+
 export const processEmail = (id: number) =>
   client.post(`/emails/${id}/process`)
 

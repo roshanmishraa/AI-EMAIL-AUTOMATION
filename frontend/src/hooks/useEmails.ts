@@ -1,5 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getEmails, getEmail, approveReply, escalateEmail, processEmail, triggerFetch, EmailFilterParams } from '../api/emailsApi'
+import {
+  getEmails, getEmail, approveReply, escalateEmail,
+  resolveEscalation, processEmail, triggerFetch, EmailFilterParams,
+} from '../api/emailsApi'
 
 export const useEmails = (params?: EmailFilterParams) =>
   useQuery({
@@ -33,6 +36,18 @@ export const useEscalateEmail = () => {
   return useMutation({
     mutationFn: (id: number) => escalateEmail(id),
     onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: ['email', id] })
+      qc.invalidateQueries({ queryKey: ['emails'] })
+    },
+  })
+}
+
+// NEW: escalation resolve karne ka hook
+export const useResolveEscalation = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, notes }: { id: number; notes?: string }) => resolveEscalation(id, notes),
+    onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: ['email', id] })
       qc.invalidateQueries({ queryKey: ['emails'] })
     },

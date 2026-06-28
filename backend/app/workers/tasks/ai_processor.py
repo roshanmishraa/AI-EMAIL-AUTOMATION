@@ -7,7 +7,7 @@ Full pipeline for a single email:
   2.  clean_email_body()
   3.  classify_email()          → category + confidence
   4.  detect_sentiment()        → sentiment + intent + vip_signal
-  4.5 Early exit for SPAM       → skip RAG/LLM entirely
+  4.5 Early exit for SPAM       → skip RAG/LLM entirely, mark processed (no escalation)
   5.  generate_reply()          → draft reply (with RAG)
   6.  check_escalation()        → escalation reason or None
   7.  Save EmailReply to DB
@@ -19,6 +19,7 @@ Full pipeline for a single email:
 
 import asyncio
 import datetime
+import json
 
 from app.workers.celery_app import celery_app
 from app.db.session import AsyncSessionLocal
@@ -28,12 +29,13 @@ from app.models.email import Email, EmailStatus, EmailCategory, EmailSentiment
 from app.models.reply import EmailReply, ReplySource
 from app.models.escalation import Escalation, EscalationReason
 from app.models.thread import EmailThread
+from app.models.user import User
 
 from app.services.ai.preprocessor import clean_email_body
 from app.services.ai.classifier import classify_email
 from app.services.ai.sentiment import detect_sentiment
 from app.services.ai.reply_generator import generate_reply
-from app.services.escalation_service import check_escalation, CONFIDENCE_THRESHOLD  # ← ADDED CONFIDENCE_THRESHOLD import
+from app.services.escalation_service import check_escalation, CONFIDENCE_THRESHOLD
 from app.services.notification_service import send_escalation_alert
 from app.services.gmail_service import send_reply as gmail_send_reply
 
@@ -114,14 +116,11 @@ async def _pipeline(email_id: int):
             is_vip    = False
 
         # ── STEP 4.5: Early exit for SPAM ───────────────
-        # Skip RAG + LLM entirely for spam/irrelevant emails
-        # to avoid token waste and hallucinated replies
         SKIP_REPLY_CATEGORIES = {"spam"}
 
         if category in SKIP_REPLY_CATEGORIES:
             print(f"[AIProcessor] Email {email_id} is SPAM — skipping RAG/LLM entirely")
 
-            # Save minimal reply placeholder (no LLM used)
             reply = EmailReply(
                 email_id=email_id,
                 generated_by=ReplySource.ai,
@@ -133,30 +132,19 @@ async def _pipeline(email_id: int):
             )
             db.add(reply)
 
-            # Update email fields
             email.category         = category
             email.sentiment        = sentiment
             email.intent           = str(intent)
             email.confidence_score = cls_conf
-            email.status           = EmailStatus.escalated
-
-            await db.flush()
-
-            # Save escalation record
-            esc = Escalation(
-                email_id=email_id,
-                reason=EscalationReason.low_confidence,
-                created_at=datetime.datetime.utcnow(),
-            )
-            db.add(esc)
+            email.status           = EmailStatus.processed
 
             await db.commit()
 
             print(
                 f"[AIProcessor] ✓ Email {email_id} | category=spam | "
-                f"RAG skipped | LLM skipped | tokens saved ✅"
+                f"RAG skipped | LLM skipped | no escalation | tokens saved ✅"
             )
-            return  # ← Pipeline stops here for spam
+            return
 
         # ── STEP 5: Generate reply (RAG included) ───────
         try:
@@ -205,12 +193,6 @@ async def _pipeline(email_id: int):
                 thread_message_count=thread_count,
             )
 
-        # ── FIX: LLM escalation flag sirf tab use karo jab confidence bhi low ho ──
-        # BEFORE (buggy): if llm_esc_flag and escalation_reason is None:
-        # AFTER  (fixed):  confidence check bhi lagaya → high-conf emails ab PROCESSED rahenge
-        # if llm_esc_flag and escalation_reason is None and final_conf < CONFIDENCE_THRESHOLD:
-        #     escalation_reason = EscalationReason.low_confidence
-
         # ── STEP 7: Save EmailReply ─────────────────────
         reply = EmailReply(
             email_id=email_id,
@@ -244,8 +226,6 @@ async def _pipeline(email_id: int):
             )
             db.add(esc)
 
-        await db.commit()
-
         # ── STEP 10: Slack alert ────────────────────────
         if escalation_reason:
             try:
@@ -257,28 +237,55 @@ async def _pipeline(email_id: int):
                 print(f"[AIProcessor] Slack alert failed (non-critical): {e}")
 
         # ── STEP 11: Auto-send if mode enabled ──────────
+        # FIX: SystemSettings fetch BEFORE commit (session still active)
+        # FIX: reply/email updates done BEFORE final commit (not after detach)
+        auto_sent = False
         try:
             from app.models.settings import SystemSettings
             settings_result = await db.execute(select(SystemSettings).limit(1))
             sys_settings    = settings_result.scalar_one_or_none()
 
             if sys_settings and sys_settings.auto_send_mode and not escalation_reason:
+                # Fetch owner's Gmail token
+                user_token = None
+                if email.user_id:
+                    owner = await db.get(User, email.user_id)
+                    if owner and owner.gmail_token:
+                        user_token = json.loads(owner.gmail_token)
+
                 sent = gmail_send_reply(
                     thread_id=email.thread_id or "",
                     to=email.sender or "",
                     subject=email.subject or "",
                     body=draft_text,
+                    user_token=user_token,
                 )
+
                 if sent:
+                    # ✅ FIX: Update BEFORE commit while session is still active
                     reply.is_approved = True
                     reply.sent_at     = datetime.datetime.utcnow()
                     email.status      = EmailStatus.replied
-                    await db.commit()
+                    auto_sent         = True
+                    print(f"[AIProcessor] ✅ Auto-sent reply for email {email_id}")
+                else:
+                    print(f"[AIProcessor] ⚠️ Gmail send returned False for email {email_id}")
+            else:
+                if not sys_settings:
+                    print(f"[AIProcessor] ⚠️ No SystemSettings row found — auto-send skipped")
+                elif not sys_settings.auto_send_mode:
+                    print(f"[AIProcessor] ℹ️ Auto-send mode is OFF — reply saved as draft")
+                elif escalation_reason:
+                    print(f"[AIProcessor] ℹ️ Escalated email — auto-send skipped")
+
         except Exception as e:
             print(f"[AIProcessor] Auto-send failed (non-critical): {e}")
+
+        # ── FINAL COMMIT (one single commit for everything) ──
+        await db.commit()
 
         print(
             f"[AIProcessor] ✓ Email {email_id} | category={category} | "
             f"sentiment={sentiment} | conf={final_conf:.1f} | "
-            f"escalated={bool(escalation_reason)}"
+            f"escalated={bool(escalation_reason)} | auto_sent={auto_sent}"
         )
