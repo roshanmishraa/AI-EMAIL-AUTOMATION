@@ -1,28 +1,48 @@
+// ============================================================
+// FILE:  frontend/src/pages/EmailDetailPage.tsx
+// CHANGE: ChunkPreview component add kiya — right sidebar mein
+//         KB chunks dikhte hain jo is email ke liye use honge
+//         (NEW sections marked with ── NEW ──)
+// ============================================================
+
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ExternalLink } from 'lucide-react'
+import { ArrowLeft, ExternalLink, BookOpen } from 'lucide-react'   // ← BookOpen NEW
 import { useEmail } from '../hooks/useEmails'
+import { useQuery } from '@tanstack/react-query'
 import Topbar from '../components/layout/Topbar'
 import AIReplyPanel from '../components/inbox/AIReplyPanel'
 import ThreadView from '../components/inbox/ThreadView'
 import Badge from '../components/common/Badge'
 import LoadingSpinner from '../components/common/LoadingSpinner'
+import ChunkPreview from '../components/kb/ChunkPreview'           // ← NEW
 import { formatDateTime } from '../types/date'
-import { useQuery } from '@tanstack/react-query'
 import client from '../api/axiosClient'
+import { fetchChunksForEmail } from '../api/kbApi'   
+import type { EmailReply } from '../types/email'              // ← NEW
 
 export default function EmailDetailPage() {
-  const { id }    = useParams<{ id: string }>()
-  const navigate  = useNavigate()
-  const emailId   = Number(id)
+  const { id }   = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const emailId  = Number(id)
 
   const { data: email, isLoading, isError } = useEmail(emailId)
 
-  // Fetch thread messages (if thread_id exists)
+  // Fetch thread messages
   const { data: threadData } = useQuery({
     queryKey: ['thread', email?.thread_id],
     queryFn:  () => client.get(`/emails/thread/${email!.thread_id}`).then(r => r.data),
     enabled:  !!email?.thread_id,
     select:   d => d.emails ?? [],
+  })
+
+  // ── NEW: Fetch KB chunks for this email ───────────────────
+  const { data: chunkData, isLoading: chunksLoading } = useQuery({
+    queryKey: ['kb-chunks', emailId],
+    queryFn:  () => fetchChunksForEmail(emailId).then(r => r.data),
+    // Only fetch after email is loaded (we need category for filtering)
+    enabled:  !!email,
+    // Cache for 5 minutes — chunks don't change often
+    staleTime: 5 * 60 * 1000,
   })
 
   const threadEmails = threadData ?? (email ? [email] : [])
@@ -87,6 +107,23 @@ export default function EmailDetailPage() {
                 {email.body}
               </p>
             </div>
+
+            {/* ── NEW: Attachment indicator ── */}
+            {email.has_attachments && (
+              <div className="px-5 py-3 border-t bg-amber-50 flex items-center gap-2">
+                <span className="text-xs text-amber-700 font-medium">📎 Attachments:</span>
+                <span className="text-xs text-amber-600">
+                  {(() => {
+                    try {
+                      const names = JSON.parse(email.attachment_names || '[]') as string[]
+                      return names.join(', ')
+                    } catch {
+                      return 'attached files'
+                    }
+                  })()}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Thread history */}
@@ -115,11 +152,7 @@ export default function EmailDetailPage() {
               {email.category && (
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-500">Category</span>
-                  <Badge
-                    label={email.category.replace('_', ' ')}
-                    variant="category"
-                    value={email.category}
-                  />
+                  <Badge label={email.category.replace('_', ' ')} variant="category" value={email.category} />
                 </div>
               )}
               {email.sentiment && (
@@ -176,7 +209,7 @@ export default function EmailDetailPage() {
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
                 AI Drafts ({email.replies.length})
               </p>
-              {email.replies.map((r, i) => (
+              {email.replies.map((r: EmailReply, i: number) => (
                 <div key={r.id} className="text-xs text-gray-500 py-1 border-b last:border-0 flex justify-between">
                   <span>Draft {i + 1} · {r.generated_by}</span>
                   <span className={r.is_approved ? 'text-green-600' : 'text-gray-400'}>
@@ -186,6 +219,41 @@ export default function EmailDetailPage() {
               ))}
             </div>
           )}
+
+          {/* ── NEW: KB Chunk Preview card ── */}
+          <div className="border rounded-xl bg-white p-4">
+            <div className="flex items-center gap-1.5 mb-3">
+              <BookOpen size={12} className="text-gray-400" />
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                KB Sources Used
+              </p>
+            </div>
+
+            {chunksLoading && (
+              <div className="flex items-center justify-center py-4">
+                <LoadingSpinner size="sm" />
+              </div>
+            )}
+
+            {!chunksLoading && chunkData && (
+              <>
+                {chunkData.chunks_found === 0 ? (
+                  <p className="text-xs text-gray-400 italic">
+                    No KB articles matched this email's category.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-[11px] text-gray-400 mb-2">
+                      {chunkData.chunks_found} chunk{chunkData.chunks_found !== 1 ? 's' : ''} retrieved
+                      {chunkData.category ? ` for category: ${chunkData.category}` : ''}
+                    </p>
+                    <ChunkPreview chunks={chunkData.chunks} />
+                  </>
+                )}
+              </>
+            )}
+          </div>
+
         </div>
       </div>
     </div>
