@@ -1,6 +1,7 @@
 # ============================================================
 # FILE:  backend/app/models/email.py
-# CHANGE: has_attachments aur attachment_names columns add kiye
+# CHANGE: user_id ForeignKey add kiya — multi-user support ke liye
+#         has_attachments + attachment_names already the (unchanged)
 # ============================================================
 
 from sqlalchemy import (
@@ -12,7 +13,7 @@ from sqlalchemy import (
     Float,
     Enum,
     ForeignKey,
-    Boolean,      # ← NEW
+    Boolean,
 )
 
 from sqlalchemy.orm import relationship
@@ -37,11 +38,11 @@ class EmailCategory(str, enum.Enum):
 
 
 class EmailSentiment(str, enum.Enum):
-    angry     = "angry"
+    angry      = "angry"
     frustrated = "frustrated"
-    neutral   = "neutral"
-    happy     = "happy"
-    sad       = "sad"
+    neutral    = "neutral"
+    happy      = "happy"
+    sad        = "sad"
 
 
 class EmailStatus(str, enum.Enum):
@@ -77,12 +78,15 @@ class Email(Base):
     confidence_score = Column(Float, nullable=True)
     status           = Column(Enum(EmailStatus), default=EmailStatus.new)
 
-    # ── NEW: Attachment fields ────────────────────────────────
-    # has_attachments: quick boolean for filtering/display
-    # attachment_names: JSON list stored as Text, e.g. '["invoice.pdf","photo.jpg"]'
+    # ── Attachment fields (UNCHANGED) ────────────────────────
     has_attachments  = Column(Boolean, default=False, nullable=False)
     attachment_names = Column(Text, default="[]", nullable=True)
 
-    # ── Relationships (UNCHANGED) ─────────────────────────────
+    # ── NEW: Multi-user — kaun sa user ka email hai ye ───────
+    # nullable=True rakha hai taaki purane emails (bina user ke) break na ho
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
+    # ── Relationships ─────────────────────────────────────────
     replies     = relationship("EmailReply", back_populates="email")
     escalations = relationship("Escalation", back_populates="email")
+    user        = relationship("User", back_populates="emails")   # ← NEW

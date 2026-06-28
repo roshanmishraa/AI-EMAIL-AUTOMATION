@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     # ──────────────────────────────────────────
     SLACK_WEBHOOK_URL: str = ""
 
+    # FRONTEND URL
+    FRONTEND_URL: str = "http://localhost:5173"
+
     # ──────────────────────────────────────────
     # NEW: Email Ping / SMTP settings
     # ──────────────────────────────────────────

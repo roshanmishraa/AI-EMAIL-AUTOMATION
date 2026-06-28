@@ -1,12 +1,12 @@
 // ============================================================
 // FILE:  frontend/src/components/layout/Sidebar.tsx
-// CHANGE: Red badge on Inbox nav item jab open escalations hon
-//         (useUnreadCount hook add kiya)
+// CHANGE: User email + Logout button add kiya footer mein
 // ============================================================
 
-import { NavLink } from 'react-router-dom'
-import { Mail, BarChart2, BookOpen, Settings, Zap } from 'lucide-react'
-import { useUnreadCount } from '../../hooks/useNotifications'   // ← NEW
+import { NavLink, useNavigate } from 'react-router-dom'
+import { Mail, BarChart2, BookOpen, Settings, Zap, LogOut } from 'lucide-react'
+import { useUnreadCount } from '../../hooks/useNotifications'
+import { useAuthStore } from '../../store/authStore'
 
 const links = [
   { to: '/inbox',     icon: Mail,      label: 'Inbox'          },
@@ -16,11 +16,18 @@ const links = [
 ]
 
 export default function Sidebar() {
-  // ── NEW: fetch open escalation count ──────────────────────
-  const { unreadCount } = useUnreadCount()
+  const { unreadCount }            = useUnreadCount()
+  const { userEmail, logout }      = useAuthStore()
+  const navigate                   = useNavigate()
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <aside className="w-60 border-r bg-white flex flex-col py-6 px-3 gap-1 shrink-0">
+
       {/* Logo */}
       <div className="px-3 pb-5 flex items-center gap-2">
         <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
@@ -48,35 +55,56 @@ export default function Sidebar() {
             }`
           }
         >
-          {/* Icon + label + optional badge */}
           <Icon size={16} />
           <span className="flex-1">{label}</span>
 
-          {/* ── NEW: Red badge — only show on Inbox when escalations exist ── */}
+          {/* Red badge — only on Inbox when escalations exist */}
           {to === '/inbox' && unreadCount > 0 && (
-            <span
-              className="
-                inline-flex items-center justify-center
-                min-w-[18px] h-[18px] px-1
-                text-[10px] font-semibold
-                bg-red-500 text-white
-                rounded-full leading-none
-              "
-            >
+            <span className="
+              inline-flex items-center justify-center
+              min-w-[18px] h-[18px] px-1
+              text-[10px] font-semibold
+              bg-red-500 text-white
+              rounded-full leading-none
+            ">
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}
         </NavLink>
       ))}
 
-      {/* Footer */}
-      <div className="mt-auto px-3 pt-4 border-t">
-        <div className="text-xs text-gray-400">
-          Backend: <span className="text-green-500 font-medium">localhost:8000</span>
-        </div>
-        <div className="text-xs text-gray-400 mt-0.5">
-          CORS: <span className="text-green-500 font-medium">✓ allowed</span>
-        </div>
+      {/* Footer — user info + logout */}
+      <div className="mt-auto px-3 pt-4 border-t space-y-3">
+
+        {/* Logged in user */}
+        {userEmail && (
+          <div className="flex items-center gap-2">
+            {/* Avatar circle */}
+            <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+              <span className="text-xs font-semibold text-blue-700">
+                {userEmail[0].toUpperCase()}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-gray-700 truncate">{userEmail}</p>
+              <p className="text-[10px] text-green-500 font-medium">● Connected</p>
+            </div>
+          </div>
+        )}
+
+        {/* Logout button */}
+        <button
+          onClick={handleLogout}
+          className="
+            w-full flex items-center gap-2 px-2 py-2 rounded-lg
+            text-xs text-gray-500 hover:text-red-600 hover:bg-red-50
+            transition-colors
+          "
+        >
+          <LogOut size={13} />
+          Sign out
+        </button>
+
       </div>
     </aside>
   )

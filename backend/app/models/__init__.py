@@ -7,7 +7,7 @@ from app.models.escalation import Escalation, EscalationReason, EscalationStatus
 from app.models.knowledge_base import KnowledgeBase, KBChunk
 from app.models.settings import SystemSettings
 from app.models.thread import EmailThread, ThreadStatus
-from app.models.settings import SystemSettings
+from app.models.user import User                               # ← NEW
 
 __all__ = [
     "Email", "EmailCategory", "EmailSentiment", "EmailStatus",
@@ -16,4 +16,5 @@ __all__ = [
     "KnowledgeBase", "KBChunk",
     "SystemSettings",
     "EmailThread", "ThreadStatus",
+    "User",                                                    # ← NEW
 ]
