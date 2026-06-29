@@ -44,8 +44,8 @@ def get_oauth_flow() -> Flow:
     """
     client_config = {
         "web": {
-            "client_id":                   settings.GMAIL_CLIENT_ID,
-            "client_secret":               settings.GMAIL_CLIENT_SECRET,
+            "client_id":                   os.getenv("GMAIL_CLIENT_ID"),
+            "client_secret":               os.getenv("GMAIL_CLIENT_SECRET"),
             "redirect_uris":               [os.getenv("GMAIL_REDIRECT_URI")],
             "auth_uri":                    "https://accounts.google.com/o/oauth2/auth",
             "token_uri":                   "https://oauth2.googleapis.com/token",
