@@ -41,6 +41,8 @@ SPAM DETECTION — classify as spam with confidence 95 if ANY of these are true:
   * Email sender is a no-reply address (noreply@, donotreply@, newsletter@)
   * Email has no direct question or complaint about BeastLife products/orders
   * Email is a job alert, subscription digest, or automated notification
+  * Email is from a recruitment platform (Naukri, LinkedIn, Shine, etc.)
+  * Email is from an e-commerce or food delivery platform unrelated to BeastLife
 
 Return valid structured output only.
 """),
@@ -57,14 +59,13 @@ llm = ChatOpenAI(
 
 async def classify_email(subject: str, body: str) -> ClassificationResult:
 
-    # ── PRE-CHECK: HTML-heavy body → mark as spam immediately ──
-    # Saves LLM tokens for obvious newsletters/Substack emails
+    # ── PRE-CHECK: HTML-heavy body → spam immediately ──
+    # FIX: threshold 3 → 2 (zyada sensitive spam detection)
     html_indicators = ['<html', '<head>', '<style>', '<!doctype', '@media', 'font-family:']
     body_lower = (body or '').lower()
     html_count = sum(1 for tag in html_indicators if tag in body_lower)
 
-    if html_count >= 3:
-        # Body is clearly an HTML email — classify as spam without calling LLM
+    if html_count >= 2:   # ← FIX: 3 se 2 kiya
         print(f"[Classifier] HTML-heavy body detected ({html_count} indicators) → spam (no LLM call)")
         return ClassificationResult(
             category="spam",

@@ -1,4 +1,5 @@
 import { useAnalytics } from '../hooks/useAnalytics'
+import type { SentimentTrendPoint } from '../types/analytics'
 import Topbar from '../components/layout/Topbar'
 import StatsCards from '../components/analytics/StatsCards'
 import CategoryPie from '../components/analytics/CategoryPie'
@@ -39,8 +40,7 @@ export default function AnalyticsPage() {
   const { data: stats, isLoading, isError } = useAnalytics()
 
   // ── Build sentiment trend data for recharts ──
-  // [{ date: "Jun 25", angry: 2, neutral: 5, happy: 1 }, ...]
-  const trendChartData = stats?.sentiment_trend.map(point => {
+  const trendChartData: Record<string, string | number>[] = stats?.sentiment_trend.map((point: SentimentTrendPoint) => {
     const label = new Date(point.date).toLocaleDateString('en-IN', {
       month: 'short', day: 'numeric',
     })
@@ -48,8 +48,10 @@ export default function AnalyticsPage() {
   }) ?? []
 
   // ── All unique sentiments across trend data (for Bar keys) ──
-  const trendSentiments = Array.from(
-    new Set(trendChartData.flatMap(d => Object.keys(d).filter(k => k !== 'date')))
+  const trendSentiments: string[] = Array.from(
+    new Set(
+      trendChartData.flatMap(d => Object.keys(d).filter(k => k !== 'date'))
+    )
   )
 
   return (
@@ -115,7 +117,7 @@ export default function AnalyticsPage() {
               </div>
             </div>
 
-            {/* ── NEW Row 3: Avg Response Time + Top Escalation Reasons ── */}
+            {/* ── Row 3: Avg Response Time + Top Escalation Reasons ── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
               {/* Avg Response Time */}
@@ -148,8 +150,8 @@ export default function AnalyticsPage() {
                   <p className="text-sm text-gray-400 italic">No escalations yet.</p>
                 ) : (
                   <div className="space-y-2">
-                    {Object.entries(stats.escalation_reasons)
-                      .sort(([, a], [, b]) => b - a)          // highest first
+                    {(Object.entries(stats.escalation_reasons) as [string, number][])
+                      .sort(([, a], [, b]) => b - a)
                       .map(([reason, count]) => {
                         const pct = stats.escalated > 0
                           ? Math.round((count / stats.escalated) * 100)
@@ -174,7 +176,7 @@ export default function AnalyticsPage() {
               </div>
             </div>
 
-            {/* ── NEW Row 4: Sentiment Trend (last 7 days) ── */}
+            {/* ── Row 4: Sentiment Trend (last 7 days) ── */}
             <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
               <h2 className="text-sm font-semibold text-gray-700 mb-4">
                 Sentiment Trend — Last 7 Days
@@ -204,20 +206,21 @@ export default function AnalyticsPage() {
                     />
                     <Legend
                       wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
-                      formatter={val =>
-                        (REASON_LABELS[val] ?? val).charAt(0).toUpperCase() +
-                        (REASON_LABELS[val] ?? val).slice(1)
+                      formatter={(val: string) =>
+                        val.charAt(0).toUpperCase() + val.slice(1)
                       }
                     />
-                    {trendSentiments.map(sentiment => (
+                    {trendSentiments.map((sentiment: string) => (
                       <Bar
                         key={sentiment}
                         dataKey={sentiment}
                         stackId="sentiment"
                         fill={SENTIMENT_COLORS[sentiment] ?? '#94a3b8'}
-                        radius={sentiment === trendSentiments[trendSentiments.length - 1]
-                          ? [4, 4, 0, 0]
-                          : [0, 0, 0, 0]
+                        radius={
+                          (sentiment === trendSentiments[trendSentiments.length - 1]
+                            ? [4, 4, 0, 0]
+                            : [0, 0, 0, 0]
+                          ) as any
                         }
                       />
                     ))}

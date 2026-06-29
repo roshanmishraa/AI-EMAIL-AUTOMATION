@@ -24,7 +24,7 @@ def html_to_text(raw_html: str) -> str:
         soup = BeautifulSoup(raw_html, "html.parser")
 
         # remove noise tags
-        for tag in soup(["script", "style", "head", "meta", "noscript"]):
+        for tag in soup(["script", "style", "head", "meta", "noscript", "img", "link"]):
             tag.decompose()
 
         text = soup.get_text(separator="\n")
@@ -39,21 +39,19 @@ def html_to_text(raw_html: str) -> str:
         return text.strip()
 
     except Exception:
-        # fallback (never crash pipeline)
-        return raw_html
+        # fallback — strip tags manually
+        clean = re.sub(r"<[^>]+>", " ", raw_html)
+        return re.sub(r"\s+", " ", clean).strip()
 
 
 # -----------------------------
-# SIGNATURE REMOVAL (FIXED)
+# SIGNATURE REMOVAL
 # -----------------------------
 def remove_signature(text: str) -> str:
-
     for pattern in SIGNATURE_PATTERNS:
         match = re.search(pattern, text)
-
         if match:
             return text[:match.start()].strip()
-
     return text
 
 

@@ -1,7 +1,5 @@
 # ============================================================
 # FILE:  backend/app/core/config.py
-# CHANGE: Default DATABASE URLs SQLite se PostgreSQL kar diye
-#         Actual values .env se override hongi
 # ============================================================
 
 from pydantic_settings import BaseSettings
@@ -17,7 +15,6 @@ class Settings(BaseSettings):
 
     # ──────────────────────────────────────────
     # DATABASE
-    # Default values PostgreSQL — .env se override hoga
     # ──────────────────────────────────────────
     DATABASE_URL:      str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ai_email_db"
     SYNC_DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/ai_email_db"
@@ -41,10 +38,12 @@ class Settings(BaseSettings):
     GMAIL_TOKEN_PATH:    str = "./storage/gmail_token.json"
 
     # ──────────────────────────────────────────
-    # RAG
+    # RAG / VECTOR STORE
     # ──────────────────────────────────────────
-    FAISS_INDEX_PATH: str = "./storage/faiss_index"
-    KB_UPLOAD_DIR:    str = "./storage/kb_uploads"
+    FAISS_INDEX_PATH:   str = "./storage/faiss_index"
+    KB_UPLOAD_DIR:      str = "./storage/kb_uploads"
+    PINECONE_API_KEY:   str = ""
+    PINECONE_INDEX_NAME: str = "ai-email-automation"
 
     # ──────────────────────────────────────────
     # SLACK

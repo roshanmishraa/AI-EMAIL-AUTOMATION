@@ -10,7 +10,7 @@ export default function InboxPage() {
   const { filter } = useEmailStore()
   const { data, isLoading, isError } = useEmails(filter)
   const triggerFetch = useTriggerFetch()
-
+  
   const emails = data?.emails ?? []
 
   return (

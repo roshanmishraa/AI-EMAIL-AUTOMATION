@@ -1,18 +1,14 @@
 # ============================================================
 # FILE:  backend/app/workers/tasks/email_poller.py
-# CHANGE: Multi-user support + Event loop fix for Windows
-#         asyncpg + ProactorEventLoop crash fix:
-#         - asyncio.set_event_loop(loop) before run
-#         - pending tasks cancelled before loop.close()
-#         - asyncio.set_event_loop(None) after close
+# FIX:   Sync psycopg2 engine use karo — asyncpg Windows pe
+#         Celery ke saath event loop crash karta hai
 # ============================================================
 
-import asyncio
 import datetime
 import json
 
 from app.workers.celery_app import celery_app
-from app.db.session import AsyncSessionLocal
+from app.db.session import SyncSessionLocal
 from sqlalchemy import select
 
 from app.models.email import Email, EmailStatus
@@ -21,54 +17,24 @@ from app.models.user import User
 from app.services.gmail_service import fetch_unread_emails, apply_label
 
 
-def run_async(coro):
-    """
-    Run an async coroutine from a sync Celery task safely on Windows.
-
-    WHY this exact pattern:
-    - asyncpg uses ProactorEventLoop on Windows. After each task the loop's
-      internal transport gets closed by asyncpg, making the loop unusable.
-    - asyncio.get_event_loop() returns that dead loop on the next task
-      → 'NoneType object has no attribute send'.
-    - Fix: create a FRESH loop every task, bind it to the thread with
-      set_event_loop(), cancel pending coroutines, close, then unbind.
-    """
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)          # ← bind fresh loop to this thread
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        # Cancel any dangling asyncpg tasks before closing
-        try:
-            pending = asyncio.all_tasks(loop)
-            if pending:
-                loop.run_until_complete(
-                    asyncio.gather(*pending, return_exceptions=True)
-                )
-        except Exception:
-            pass
-        loop.close()
-        asyncio.set_event_loop(None)      # ← unbind so next task gets fresh loop
-
-
 @celery_app.task(bind=True, max_retries=3, name="app.workers.tasks.email_poller.fetch_new_emails_task")
 def fetch_new_emails_task(self):
     """Fetch unread Gmail for ALL active users → save to DB → dispatch AI processor."""
     try:
-        run_async(_fetch_and_save())
+        _fetch_and_save()
     except Exception as exc:
         print(f"[Poller] Task failed: {exc}")
         raise self.retry(exc=exc, countdown=30)
 
 
-async def _fetch_and_save():
-    async with AsyncSessionLocal() as db:
+def _fetch_and_save():
+    # ── Sync session — no asyncio needed ────────────────────
+    with SyncSessionLocal() as db:
 
-        # ── 1. Saare active users fetch karo ────────────────────
-        users_result = await db.execute(
+        # ── 1. Saare active users fetch karo ────────────────
+        users = db.execute(
             select(User).where(User.is_active == True)
-        )
-        users = users_result.scalars().all()
+        ).scalars().all()
 
         if not users:
             print("[Poller] No active users found — skipping poll")
@@ -78,7 +44,6 @@ async def _fetch_and_save():
 
         all_new_email_ids = []
 
-        # ── 2. Har user ke liye alag alag emails fetch karo ─────
         for user in users:
 
             if not user.gmail_token:
@@ -91,7 +56,7 @@ async def _fetch_and_save():
                 print(f"[Poller] Token parse failed for {user.email}: {e}")
                 continue
 
-            # ── 3. Gmail se unread emails fetch karo ────────────
+            # ── 2. Gmail se unread emails fetch karo ────────
             try:
                 raw_emails = fetch_unread_emails(
                     max_results=20,
@@ -113,18 +78,18 @@ async def _fetch_and_save():
                 gmail_id  = raw.get("gmail_id", "")
                 thread_id = raw.get("thread_id", "")
 
-                # ── 4. Skip if already saved ─────────────────────
-                existing = await db.execute(
+                # ── 3. Skip if already saved ─────────────────
+                existing = db.execute(
                     select(Email).where(Email.gmail_message_id == gmail_id)
-                )
-                if existing.scalar_one_or_none():
+                ).scalar_one_or_none()
+
+                if existing:
                     continue
 
-                # ── 5. Upsert EmailThread ─────────────────────────
-                thread_result = await db.execute(
+                # ── 4. Upsert EmailThread ─────────────────────
+                thread = db.execute(
                     select(EmailThread).where(EmailThread.gmail_thread_id == thread_id)
-                )
-                thread = thread_result.scalar_one_or_none()
+                ).scalar_one_or_none()
 
                 if thread:
                     thread.message_count   = (thread.message_count or 0) + 1
@@ -138,8 +103,9 @@ async def _fetch_and_save():
                         priority_level=0,
                     )
                     db.add(thread)
+                    db.flush()
 
-                # ── 6. Save Email (with user_id) ──────────────────
+                # ── 5. Save Email ──────────────────────────────
                 email = Email(
                     gmail_message_id = gmail_id,
                     thread_id        = thread_id,
@@ -153,11 +119,11 @@ async def _fetch_and_save():
                     user_id          = user.id,
                 )
                 db.add(email)
-                await db.flush()
+                db.flush()   # get email.id
 
                 new_email_ids.append(email.id)
 
-                # ── 7. Apply Gmail label ──────────────────────────
+                # ── 6. Apply Gmail label ──────────────────────
                 try:
                     apply_label(
                         gmail_id,
@@ -167,11 +133,11 @@ async def _fetch_and_save():
                 except Exception as e:
                     print(f"[Poller] Label apply failed for {gmail_id}: {e}")
 
-            await db.commit()
+            db.commit()
             all_new_email_ids.extend(new_email_ids)
             print(f"[Poller] ✓ Saved {len(new_email_ids)} email(s) for {user.email}")
 
-    # ── 8. Dispatch AI pipeline for each new email ───────────
+    # ── 7. Dispatch AI pipeline for each new email ───────────
     from app.workers.tasks.ai_processor import process_email_ai
     for eid in all_new_email_ids:
         process_email_ai.delay(eid)

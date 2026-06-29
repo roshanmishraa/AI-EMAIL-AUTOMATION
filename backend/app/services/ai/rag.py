@@ -1,11 +1,10 @@
-import os
-import faiss
 import json
-import numpy as np
+import uuid
 
 from typing import Optional, List
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from pinecone import Pinecone
 from app.core.config import settings
 
 
@@ -23,11 +22,9 @@ SKIP_RAG_CATEGORIES = {"spam"}
 
 # ──────────────────────────────────────────
 # GLOBAL STATE
-# Each chunk stored as {"text": str, "category": str | None, "source": str}
 # ──────────────────────────────────────────
 _embeddings: Optional[OpenAIEmbeddings] = None
-_index: Optional[faiss.IndexFlatL2]     = None
-_chunks: List[dict]                     = []
+_pinecone_index = None
 
 
 # ──────────────────────────────────────────
@@ -44,58 +41,47 @@ def get_embeddings() -> OpenAIEmbeddings:
 
 
 # ──────────────────────────────────────────
-# LOAD INDEX FROM DISK
+# GET PINECONE INDEX
+# ──────────────────────────────────────────
+def get_pinecone_index():
+    global _pinecone_index
+    if _pinecone_index is None:
+        pc = Pinecone(api_key=settings.PINECONE_API_KEY)
+        _pinecone_index = pc.Index(settings.PINECONE_INDEX_NAME)
+    return _pinecone_index
+
+
+# ──────────────────────────────────────────
+# LOAD INDEX — no-op for Pinecone
+# Kept for backward compat with main.py lifespan
 # ──────────────────────────────────────────
 def load_index():
-    global _index, _chunks
-
-    index_path  = settings.FAISS_INDEX_PATH + ".index"
-    chunks_path = settings.FAISS_INDEX_PATH + ".chunks"
-
-    if os.path.exists(index_path) and os.path.exists(chunks_path):
-        try:
-            _index = faiss.read_index(index_path)
-            with open(chunks_path, "r") as f:
-                raw = json.load(f)
-
-            # ── MIGRATION: old format was List[str], new is List[dict] ──
-            if raw and isinstance(raw[0], str):
-                _chunks = [{"text": c, "category": None, "source": ""} for c in raw]
-            else:
-                _chunks = raw
-
-        except Exception as e:
-            print("⚠️  FAISS load failed, resetting index:", e)
-            _index  = None
-            _chunks = []
+    """No-op — Pinecone is cloud-persistent, nothing to load from disk."""
+    try:
+        idx = get_pinecone_index()
+        stats = idx.describe_index_stats()
+        print(f"✓ Pinecone index connected: {stats.total_vector_count} vectors")
+    except Exception as e:
+        print(f"⚠️  Pinecone connection warning: {e}")
 
 
 # ──────────────────────────────────────────
-# SAVE INDEX TO DISK
+# SAVE INDEX — no-op for Pinecone
+# Kept for backward compat
 # ──────────────────────────────────────────
 def save_index():
-    global _index, _chunks
-
-    if _index is None:
-        return
-
-    os.makedirs(os.path.dirname(settings.FAISS_INDEX_PATH), exist_ok=True)
-    faiss.write_index(_index, settings.FAISS_INDEX_PATH + ".index")
-
-    with open(settings.FAISS_INDEX_PATH + ".chunks", "w") as f:
-        json.dump(_chunks, f)
+    """No-op — Pinecone handles persistence automatically."""
+    pass
 
 
 # ──────────────────────────────────────────
-# ADD DOCUMENT TO RAG INDEX
+# ADD DOCUMENT TO PINECONE INDEX
 # ──────────────────────────────────────────
 async def add_document_to_index(
     text: str,
     source: str = "",
     category_tag: Optional[str] = None,
 ) -> int:
-    global _index, _chunks
-
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
@@ -107,21 +93,28 @@ async def add_document_to_index(
 
     embedder = get_embeddings()
     vectors  = await embedder.aembed_documents(raw_chunks)
-    matrix   = np.array(vectors, dtype="float32")
 
-    if _index is None:
-        _index = faiss.IndexFlatL2(matrix.shape[1])
+    idx = get_pinecone_index()
 
-    _index.add(matrix)
-
-    for chunk in raw_chunks:
-        _chunks.append({
-            "text":     chunk,
-            "category": category_tag,
-            "source":   source,
+    # Build upsert batch
+    batch = []
+    for chunk, vector in zip(raw_chunks, vectors):
+        batch.append({
+            "id":     str(uuid.uuid4()),
+            "values": vector,
+            "metadata": {
+                "text":     chunk,
+                "category": category_tag or "",
+                "source":   source,
+            }
         })
 
-    save_index()
+    # Upsert in batches of 100 (Pinecone limit)
+    batch_size = 100
+    for i in range(0, len(batch), batch_size):
+        idx.upsert(vectors=batch[i:i + batch_size])
+
+    print(f"✓ Pinecone: upserted {len(batch)} vectors (source={source}, category={category_tag})")
     return len(raw_chunks)
 
 
@@ -141,43 +134,47 @@ async def retrieve_relevant_chunks(
         print(f"[RAG] Category '{category}' is in SKIP_RAG_CATEGORIES — retrieval blocked ✋")
         return []
 
-    if _index is None or len(_chunks) == 0:
-        return []
+    try:
+        embedder = get_embeddings()
+        q_vector = await embedder.aembed_query(query)
 
-    embedder = get_embeddings()
-    q_vector = await embedder.aembed_query(query)
-    q_matrix = np.array([q_vector], dtype="float32")
-
-    # Search more candidates than needed so we can filter by category
-    search_k = min(top_k * 4, len(_chunks))
-    distances, indices = _index.search(q_matrix, search_k)
-
-    results = []
-    for i in indices[0]:
-        if not (0 <= i < len(_chunks)):
-            continue
-
-        chunk = _chunks[i]
+        idx = get_pinecone_index()
 
         # ── CATEGORY FILTER ──
-        if category is not None:
-            chunk_cat = chunk.get("category")
-            if chunk_cat is not None and chunk_cat != category:
-                continue
+        query_filter = None
+        if category:
+            query_filter = {"category": {"$eq": category}}
 
-        results.append(chunk["text"])
+        results = idx.query(
+            vector=q_vector,
+            top_k=top_k,
+            include_metadata=True,
+            filter=query_filter,
+        )
 
-        if len(results) >= top_k:
-            break
+        chunks = [
+            match["metadata"]["text"]
+            for match in results["matches"]
+            if "text" in match.get("metadata", {})
+        ]
 
-    # ── FALLBACK: agar category filter se kuch nahi mila ──
-    # Note: spam yahan kabhi nahi pahunchega (guard upar hai)
-    if not results and category is not None:
-        print(f"[RAG] No chunks found for category='{category}' — falling back to unfiltered top-{top_k}")
-        for i in indices[0]:
-            if 0 <= i < len(_chunks):
-                results.append(_chunks[i]["text"])
-            if len(results) >= top_k:
-                break
+        # ── FALLBACK: agar category filter se kuch nahi mila ──
+        # Note: spam yahan kabhi nahi pahunchega (guard upar hai)
+        if not chunks and category:
+            print(f"[RAG] No chunks found for category='{category}' — falling back to unfiltered top-{top_k}")
+            results = idx.query(
+                vector=q_vector,
+                top_k=top_k,
+                include_metadata=True,
+            )
+            chunks = [
+                match["metadata"]["text"]
+                for match in results["matches"]
+                if "text" in match.get("metadata", {})
+            ]
 
-    return results
+        return chunks
+
+    except Exception as e:
+        print(f"⚠️  Pinecone retrieve error: {e}")
+        return []
