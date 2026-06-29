@@ -10,19 +10,19 @@ class Settings(BaseSettings):
     # ──────────────────────────────────────────
     # APP
     # ──────────────────────────────────────────
-    APP_ENV: str = "development"
+    APP_ENV: str = "production"
     API_KEY: str = "supersecret-change-me"
 
     # ──────────────────────────────────────────
     # DATABASE
     # ──────────────────────────────────────────
-    DATABASE_URL:      str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ai_email_db"
-    SYNC_DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/ai_email_db"
+    # DATABASE_URL:      str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ai_email_db"
+    # SYNC_DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/ai_email_db"
 
-    # ──────────────────────────────────────────
-    # REDIS / CELERY
-    # ──────────────────────────────────────────
-    REDIS_URL: str = "redis://localhost:6379/0"
+    # # ──────────────────────────────────────────
+    # # REDIS / CELERY
+    # # ──────────────────────────────────────────
+    # REDIS_URL: str = "redis://localhost:6379/0"
 
     # ──────────────────────────────────────────
     # AI
