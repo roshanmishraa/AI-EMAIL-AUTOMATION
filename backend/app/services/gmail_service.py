@@ -21,7 +21,7 @@ from googleapiclient.discovery import build
 from email.mime.text import MIMEText
 import base64
 import os
-import json
+import json,logging
 
 from app.core.config import settings
 
@@ -42,6 +42,9 @@ def get_oauth_flow() -> Flow:
     Google OAuth2 Flow object banata hai.
     Client credentials .env se aate hain.
     """
+    redirect_uri = os.getenv("GMAIL_REDIRECT_URI")
+    logging.warning(f"[OAuth] GMAIL_REDIRECT_URI = '{redirect_uri}'")
+    print(f"[OAuth] GMAIL_REDIRECT_URI = '{redirect_uri}'")
     client_config = {
         "web": {
             "client_id":                   os.getenv("GMAIL_CLIENT_ID"),
@@ -57,6 +60,9 @@ def get_oauth_flow() -> Flow:
         redirect_uri=os.getenv("GMAIL_REDIRECT_URI"),
         autogenerate_code_verifier=False,   # ← FIX: PKCE disabled (confidential client, client_secret already present)
     )
+    
+    logging.warning(f"[OAuth] GMAIL_REDIRECT_URI = '{flow.redirect_uri}'")
+
     return flow
 
 
