@@ -16,6 +16,10 @@ CHUNK_SIZE    = 512
 CHUNK_OVERLAP = 64
 TOP_K         = 5
 
+# Categories that should NEVER retrieve KB chunks.
+# Even if called by mistake, zero chunks returned = zero tokens wasted.
+SKIP_RAG_CATEGORIES = {"spam"}
+
 
 # ──────────────────────────────────────────
 # GLOBAL STATE
@@ -23,7 +27,7 @@ TOP_K         = 5
 # ──────────────────────────────────────────
 _embeddings: Optional[OpenAIEmbeddings] = None
 _index: Optional[faiss.IndexFlatL2]     = None
-_chunks: List[dict]                     = []   # was List[str] — now List[dict]
+_chunks: List[dict]                     = []
 
 
 # ──────────────────────────────────────────
@@ -84,7 +88,6 @@ def save_index():
 
 # ──────────────────────────────────────────
 # ADD DOCUMENT TO RAG INDEX
-# category_tag: one of the EmailCategory values, or None for untagged
 # ──────────────────────────────────────────
 async def add_document_to_index(
     text: str,
@@ -111,7 +114,6 @@ async def add_document_to_index(
 
     _index.add(matrix)
 
-    # Store as dicts with category metadata
     for chunk in raw_chunks:
         _chunks.append({
             "text":     chunk,
@@ -125,14 +127,19 @@ async def add_document_to_index(
 
 # ──────────────────────────────────────────
 # RETRIEVE RELEVANT CHUNKS
-# category: if provided, ONLY return chunks matching that category
-#           (or untagged chunks as fallback)
 # ──────────────────────────────────────────
 async def retrieve_relevant_chunks(
     query: str,
     top_k: int = TOP_K,
     category: Optional[str] = None,
 ) -> List[str]:
+
+    # ── GUARD: spam aur skip categories ke liye kuch retrieve mat karo ──
+    # Primary protection is in ai_processor.py (early exit before generate_reply).
+    # This is a second layer — even if called by mistake, returns empty list.
+    if category in SKIP_RAG_CATEGORIES:
+        print(f"[RAG] Category '{category}' is in SKIP_RAG_CATEGORIES — retrieval blocked ✋")
+        return []
 
     if _index is None or len(_chunks) == 0:
         return []
@@ -141,7 +148,7 @@ async def retrieve_relevant_chunks(
     q_vector = await embedder.aembed_query(query)
     q_matrix = np.array([q_vector], dtype="float32")
 
-    # Search more candidates than needed so we can filter
+    # Search more candidates than needed so we can filter by category
     search_k = min(top_k * 4, len(_chunks))
     distances, indices = _index.search(q_matrix, search_k)
 
@@ -152,10 +159,9 @@ async def retrieve_relevant_chunks(
 
         chunk = _chunks[i]
 
-        # ── CATEGORY FILTER (the key fix from audit) ──
+        # ── CATEGORY FILTER ──
         if category is not None:
             chunk_cat = chunk.get("category")
-            # accept if chunk matches the category OR chunk has no category tag
             if chunk_cat is not None and chunk_cat != category:
                 continue
 
@@ -164,8 +170,10 @@ async def retrieve_relevant_chunks(
         if len(results) >= top_k:
             break
 
-    # If category filter returned nothing, fall back to top-K unfiltered
+    # ── FALLBACK: agar category filter se kuch nahi mila ──
+    # Note: spam yahan kabhi nahi pahunchega (guard upar hai)
     if not results and category is not None:
+        print(f"[RAG] No chunks found for category='{category}' — falling back to unfiltered top-{top_k}")
         for i in indices[0]:
             if 0 <= i < len(_chunks):
                 results.append(_chunks[i]["text"])

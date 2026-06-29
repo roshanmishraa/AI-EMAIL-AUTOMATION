@@ -1,7 +1,7 @@
 # ============================================================
 # FILE:  backend/app/core/config.py
-# CHANGE: AGENT_EMAIL, SMTP_HOST, SMTP_PORT, SMTP_USER,
-#         SMTP_PASS settings add kiye for email ping feature
+# CHANGE: Default DATABASE URLs SQLite se PostgreSQL kar diye
+#         Actual values .env se override hongi
 # ============================================================
 
 from pydantic_settings import BaseSettings
@@ -17,9 +17,10 @@ class Settings(BaseSettings):
 
     # ──────────────────────────────────────────
     # DATABASE
+    # Default values PostgreSQL — .env se override hoga
     # ──────────────────────────────────────────
-    DATABASE_URL:      str = "sqlite+aiosqlite:///./ai_email.db"
-    SYNC_DATABASE_URL: str = "sqlite:///./ai_email.db"
+    DATABASE_URL:      str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ai_email_db"
+    SYNC_DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/ai_email_db"
 
     # ──────────────────────────────────────────
     # REDIS / CELERY
@@ -54,20 +55,13 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:5173"
 
     # ──────────────────────────────────────────
-    # NEW: Email Ping / SMTP settings
+    # Email Ping / SMTP settings
     # ──────────────────────────────────────────
-    # Who to email when an escalation happens
     AGENT_EMAIL: str = ""
-
-    # SMTP server settings
-    # For Gmail: SMTP_HOST=smtp.gmail.com, SMTP_PORT=587
-    #            SMTP_USER=your@gmail.com, SMTP_PASS=<app-password>
-    # For SendGrid: SMTP_HOST=smtp.sendgrid.net, SMTP_PORT=587
-    #               SMTP_USER=apikey, SMTP_PASS=<sendgrid-api-key>
-    SMTP_HOST: str = "smtp.gmail.com"
-    SMTP_PORT: int = 587
-    SMTP_USER: str = ""
-    SMTP_PASS: str = ""
+    SMTP_HOST:   str = "smtp.gmail.com"
+    SMTP_PORT:   int = 587
+    SMTP_USER:   str = ""
+    SMTP_PASS:   str = ""
 
     class Config:
         env_file = ".env"

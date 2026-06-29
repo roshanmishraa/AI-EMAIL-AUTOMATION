@@ -1,10 +1,10 @@
 # ============================================================
 # FILE:  backend/app/workers/tasks/email_poller.py
-# CHANGE: Multi-user support add kiya
-#         - Ab saare active users ke liye emails fetch hoti hain
-#         - har user ka apna gmail_token use hota hai
-#         - Email save hote waqt user_id bhi store hota hai
-#         - apply_label() aur fetch_unread_emails() mein user_token pass hota hai
+# CHANGE: Multi-user support + Event loop fix for Windows
+#         asyncpg + ProactorEventLoop crash fix:
+#         - asyncio.set_event_loop(loop) before run
+#         - pending tasks cancelled before loop.close()
+#         - asyncio.set_event_loop(None) after close
 # ============================================================
 
 import asyncio
@@ -22,11 +22,33 @@ from app.services.gmail_service import fetch_unread_emails, apply_label
 
 
 def run_async(coro):
+    """
+    Run an async coroutine from a sync Celery task safely on Windows.
+
+    WHY this exact pattern:
+    - asyncpg uses ProactorEventLoop on Windows. After each task the loop's
+      internal transport gets closed by asyncpg, making the loop unusable.
+    - asyncio.get_event_loop() returns that dead loop on the next task
+      → 'NoneType object has no attribute send'.
+    - Fix: create a FRESH loop every task, bind it to the thread with
+      set_event_loop(), cancel pending coroutines, close, then unbind.
+    """
     loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)          # ← bind fresh loop to this thread
     try:
         return loop.run_until_complete(coro)
     finally:
+        # Cancel any dangling asyncpg tasks before closing
+        try:
+            pending = asyncio.all_tasks(loop)
+            if pending:
+                loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
+        except Exception:
+            pass
         loop.close()
+        asyncio.set_event_loop(None)      # ← unbind so next task gets fresh loop
 
 
 @celery_app.task(bind=True, max_retries=3, name="app.workers.tasks.email_poller.fetch_new_emails_task")
@@ -63,7 +85,6 @@ async def _fetch_and_save():
                 print(f"[Poller] User {user.email} has no Gmail token — skipping")
                 continue
 
-            # Token string → dict
             try:
                 user_token = json.loads(user.gmail_token)
             except Exception as e:
@@ -74,7 +95,7 @@ async def _fetch_and_save():
             try:
                 raw_emails = fetch_unread_emails(
                     max_results=20,
-                    user_token=user_token,     # ← user ka apna token
+                    user_token=user_token,
                 )
             except Exception as e:
                 print(f"[Poller] Gmail fetch error for {user.email}: {e}")
@@ -129,10 +150,10 @@ async def _fetch_and_save():
                     status           = EmailStatus.new,
                     has_attachments  = raw.get("has_attachments", False),
                     attachment_names = raw.get("attachment_names", "[]"),
-                    user_id          = user.id,    # ← NEW: kaun sa user
+                    user_id          = user.id,
                 )
                 db.add(email)
-                await db.flush()   # get email.id
+                await db.flush()
 
                 new_email_ids.append(email.id)
 
@@ -141,7 +162,7 @@ async def _fetch_and_save():
                     apply_label(
                         gmail_id,
                         label="AI-Processed",
-                        user_token=user_token,     # ← user ka apna token
+                        user_token=user_token,
                     )
                 except Exception as e:
                     print(f"[Poller] Label apply failed for {gmail_id}: {e}")

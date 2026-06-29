@@ -3,12 +3,10 @@ from app.core.config import settings
 
 # ──────────────────────────────────────────
 # DATABASE URL
+# Must be postgresql+asyncpg:// in .env
+# Example: postgresql+asyncpg://user:password@localhost:5432/dbname
 # ──────────────────────────────────────────
 DATABASE_URL = settings.DATABASE_URL
-
-# Ensure correct async driver for SQLite
-if DATABASE_URL.startswith("sqlite") and "+aiosqlite" not in DATABASE_URL:
-    DATABASE_URL = DATABASE_URL.replace("sqlite:///", "sqlite+aiosqlite:///")
 
 # ──────────────────────────────────────────
 # ENGINE
@@ -17,8 +15,9 @@ engine = create_async_engine(
     DATABASE_URL,
     echo=settings.APP_ENV == "development",
     pool_pre_ping=True,
-    # SQLite-specific: avoid "database is locked" in concurrent Celery tasks
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
+    # PostgreSQL pool settings
+    pool_size=10,
+    max_overflow=20,
 )
 
 # ──────────────────────────────────────────

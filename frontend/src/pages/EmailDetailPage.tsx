@@ -1,12 +1,11 @@
 // ============================================================
 // FILE:  frontend/src/pages/EmailDetailPage.tsx
-// CHANGE: ChunkPreview component add kiya — right sidebar mein
-//         KB chunks dikhte hain jo is email ke liye use honge
-//         (NEW sections marked with ── NEW ──)
+// FIX:   Spam emails ke liye KB Sources card hide kiya
+//        + spam pe fetchChunksForEmail API call bhi nahi hogi
 // ============================================================
 
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ExternalLink, BookOpen } from 'lucide-react'   // ← BookOpen NEW
+import { ArrowLeft, ExternalLink, BookOpen } from 'lucide-react'
 import { useEmail } from '../hooks/useEmails'
 import { useQuery } from '@tanstack/react-query'
 import Topbar from '../components/layout/Topbar'
@@ -14,11 +13,11 @@ import AIReplyPanel from '../components/inbox/AIReplyPanel'
 import ThreadView from '../components/inbox/ThreadView'
 import Badge from '../components/common/Badge'
 import LoadingSpinner from '../components/common/LoadingSpinner'
-import ChunkPreview from '../components/kb/ChunkPreview'           // ← NEW
+import ChunkPreview from '../components/kb/ChunkPreview'
 import { formatDateTime } from '../types/date'
 import client from '../api/axiosClient'
-import { fetchChunksForEmail } from '../api/kbApi'   
-import type { EmailReply } from '../types/email'              // ← NEW
+import { fetchChunksForEmail } from '../api/kbApi'
+import type { EmailReply } from '../types/email'
 
 export default function EmailDetailPage() {
   const { id }   = useParams<{ id: string }>()
@@ -35,13 +34,16 @@ export default function EmailDetailPage() {
     select:   d => d.emails ?? [],
   })
 
-  // ── NEW: Fetch KB chunks for this email ───────────────────
+  // Fetch KB chunks — spam pe disabled:
+  // 1. Spam ka RAG retrieval backend pe hota hi nahi (ai_processor early exit)
+  // 2. rag.py mein bhi SKIP_RAG_CATEGORIES guard hai
+  // 3. Frontend pe bhi API call skip — no wasted network request
+  const isSpam = email?.category === 'spam'
+
   const { data: chunkData, isLoading: chunksLoading } = useQuery({
     queryKey: ['kb-chunks', emailId],
     queryFn:  () => fetchChunksForEmail(emailId).then(r => r.data),
-    // Only fetch after email is loaded (we need category for filtering)
-    enabled:  !!email,
-    // Cache for 5 minutes — chunks don't change often
+    enabled:  !!email && !isSpam,   // ← FIX: spam pe fetch hi nahi hogi
     staleTime: 5 * 60 * 1000,
   })
 
@@ -108,7 +110,7 @@ export default function EmailDetailPage() {
               </p>
             </div>
 
-            {/* ── NEW: Attachment indicator ── */}
+            {/* Attachment indicator */}
             {email.has_attachments && (
               <div className="px-5 py-3 border-t bg-amber-50 flex items-center gap-2">
                 <span className="text-xs text-amber-700 font-medium">📎 Attachments:</span>
@@ -220,39 +222,41 @@ export default function EmailDetailPage() {
             </div>
           )}
 
-          {/* ── NEW: KB Chunk Preview card ── */}
-          <div className="border rounded-xl bg-white p-4">
-            <div className="flex items-center gap-1.5 mb-3">
-              <BookOpen size={12} className="text-gray-400" />
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                KB Sources Used
-              </p>
-            </div>
-
-            {chunksLoading && (
-              <div className="flex items-center justify-center py-4">
-                <LoadingSpinner size="sm" />
+          {/* KB Sources — spam ke liye bilkul hide (card bhi nahi dikhega) */}
+          {!isSpam && (
+            <div className="border rounded-xl bg-white p-4">
+              <div className="flex items-center gap-1.5 mb-3">
+                <BookOpen size={12} className="text-gray-400" />
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  KB Sources Used
+                </p>
               </div>
-            )}
 
-            {!chunksLoading && chunkData && (
-              <>
-                {chunkData.chunks_found === 0 ? (
-                  <p className="text-xs text-gray-400 italic">
-                    No KB articles matched this email's category.
-                  </p>
-                ) : (
-                  <>
-                    <p className="text-[11px] text-gray-400 mb-2">
-                      {chunkData.chunks_found} chunk{chunkData.chunks_found !== 1 ? 's' : ''} retrieved
-                      {chunkData.category ? ` for category: ${chunkData.category}` : ''}
+              {chunksLoading && (
+                <div className="flex items-center justify-center py-4">
+                  <LoadingSpinner size="sm" />
+                </div>
+              )}
+
+              {!chunksLoading && chunkData && (
+                <>
+                  {chunkData.chunks_found === 0 ? (
+                    <p className="text-xs text-gray-400 italic">
+                      No KB articles matched this email's category.
                     </p>
-                    <ChunkPreview chunks={chunkData.chunks} />
-                  </>
-                )}
-              </>
-            )}
-          </div>
+                  ) : (
+                    <>
+                      <p className="text-[11px] text-gray-400 mb-2">
+                        {chunkData.chunks_found} chunk{chunkData.chunks_found !== 1 ? 's' : ''} retrieved
+                        {chunkData.category ? ` for category: ${chunkData.category}` : ''}
+                      </p>
+                      <ChunkPreview chunks={chunkData.chunks} />
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
         </div>
       </div>

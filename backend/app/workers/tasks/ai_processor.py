@@ -44,12 +44,33 @@ from app.services.gmail_service import send_reply as gmail_send_reply
 # HELPER: run async code from sync Celery task
 # ──────────────────────────────────────────
 def run_async(coro):
-    """Run an async coroutine from a sync Celery task."""
+    """
+    Run an async coroutine from a sync Celery task.
+
+    WHY new_event_loop() every time:
+    - Celery MainProcess on Windows uses ProactorEventLoop which gets
+      closed after each task completes (asyncpg closes the transport).
+    - Reusing the same loop via asyncio.get_event_loop() gives
+      'NoneType has no attribute send' on the next task.
+    - Creating + closing a fresh loop per task is the correct pattern
+      for asyncpg inside sync Celery workers.
+    """
     loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)          # ← FIX: bind loop to this thread
     try:
         return loop.run_until_complete(coro)
     finally:
+        # Gracefully cancel any pending tasks before closing
+        try:
+            pending = asyncio.all_tasks(loop)
+            if pending:
+                loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
+        except Exception:
+            pass
         loop.close()
+        asyncio.set_event_loop(None)      # ← FIX: detach so next task gets fresh loop
 
 
 # ──────────────────────────────────────────
@@ -116,6 +137,10 @@ async def _pipeline(email_id: int):
             is_vip    = False
 
         # ── STEP 4.5: Early exit for SPAM ───────────────
+        # FIX: SPAM emails get EMPTY retrieved_chunks so the UI never
+        # renders RAG context / knowledge-base chunks for spam.
+        # We store an explicit empty JSON array instead of NULL so the
+        # frontend can reliably check  chunks.length === 0.
         SKIP_REPLY_CATEGORIES = {"spam"}
 
         if category in SKIP_REPLY_CATEGORIES:
@@ -124,10 +149,15 @@ async def _pipeline(email_id: int):
             reply = EmailReply(
                 email_id=email_id,
                 generated_by=ReplySource.ai,
-                reply_text="[SPAM — No reply generated. This email was identified as spam or irrelevant to BeastLife customer support.]",
+                reply_text=(
+                    "[SPAM — No reply generated. This email was identified as "
+                    "spam or irrelevant to BeastLife customer support.]"
+                ),
                 tone_used="none",
                 confidence_score=cls_conf,
                 is_approved=False,
+                # ↓ FIX: explicitly empty — no KB chunks for spam
+                retrieved_chunks=json.dumps([]),
                 created_at=datetime.datetime.utcnow(),
             )
             db.add(reply)
@@ -147,6 +177,7 @@ async def _pipeline(email_id: int):
             return
 
         # ── STEP 5: Generate reply (RAG included) ───────
+        retrieved_chunks = []   # will be populated by generate_reply if it returns them
         try:
             reply_result = await generate_reply(
                 subject=email.subject or "",
@@ -158,6 +189,9 @@ async def _pipeline(email_id: int):
             reply_conf      = reply_result.confidence_score
             llm_esc_flag    = reply_result.escalation_flag
             tone_used       = reply_result.tone_used
+            # Capture RAG chunks if your generate_reply returns them
+            if hasattr(reply_result, "retrieved_chunks"):
+                retrieved_chunks = reply_result.retrieved_chunks or []
         except Exception as e:
             print(f"[AIProcessor] ReplyGenerator failed: {e}")
             draft_text   = "Thank you for contacting us. Our team will review your message shortly."
@@ -201,6 +235,8 @@ async def _pipeline(email_id: int):
             tone_used=tone_used,
             confidence_score=final_conf,
             is_approved=False,
+            # Store RAG chunks as JSON for the UI to render
+            retrieved_chunks=json.dumps(retrieved_chunks),
             created_at=datetime.datetime.utcnow(),
         )
         db.add(reply)
@@ -237,8 +273,6 @@ async def _pipeline(email_id: int):
                 print(f"[AIProcessor] Slack alert failed (non-critical): {e}")
 
         # ── STEP 11: Auto-send if mode enabled ──────────
-        # FIX: SystemSettings fetch BEFORE commit (session still active)
-        # FIX: reply/email updates done BEFORE final commit (not after detach)
         auto_sent = False
         try:
             from app.models.settings import SystemSettings
@@ -246,7 +280,6 @@ async def _pipeline(email_id: int):
             sys_settings    = settings_result.scalar_one_or_none()
 
             if sys_settings and sys_settings.auto_send_mode and not escalation_reason:
-                # Fetch owner's Gmail token
                 user_token = None
                 if email.user_id:
                     owner = await db.get(User, email.user_id)
@@ -262,7 +295,6 @@ async def _pipeline(email_id: int):
                 )
 
                 if sent:
-                    # ✅ FIX: Update BEFORE commit while session is still active
                     reply.is_approved = True
                     reply.sent_at     = datetime.datetime.utcnow()
                     email.status      = EmailStatus.replied
@@ -281,7 +313,7 @@ async def _pipeline(email_id: int):
         except Exception as e:
             print(f"[AIProcessor] Auto-send failed (non-critical): {e}")
 
-        # ── FINAL COMMIT (one single commit for everything) ──
+        # ── FINAL COMMIT ────────────────────────────────
         await db.commit()
 
         print(
