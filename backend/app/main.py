@@ -14,7 +14,7 @@ from app.db.base import Base
 from app.core.deps import get_db
 
 import app.models  # noqa: F401
-
+import os
 from app.api.v1 import router as api_router
 from app.services.ai.rag import load_index
 from app.services.gmail_service import (
@@ -74,7 +74,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        settings.FRONTEND_URL,
+        os.getenv("FRONTEND_URL"),
     ],
     allow_credentials=True,
     allow_methods=["*"],
