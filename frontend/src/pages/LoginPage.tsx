@@ -13,7 +13,7 @@ import { useAuthStore } from '../store/authStore'
 
 // Local dev: /auth/gmail (vite proxy se backend pe)
 // Production: https://your-backend.railway.app/auth/gmail
-const BACKEND_URL = import.meta.env.VITE_API_BASE_URL ?? ''
+const BACKEND_URL = import.meta.env.VITE_API_URL ?? ''
 
 export default function LoginPage() {
   const navigate                  = useNavigate()
