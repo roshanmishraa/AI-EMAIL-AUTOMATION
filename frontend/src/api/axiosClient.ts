@@ -10,8 +10,8 @@ import axios from 'axios'
 
 // Local dev: VITE_API_BASE_URL nahi hoga → relative URL use hoga (proxy kaam karega)
 // Production: VITE_API_BASE_URL=https://your-backend.railway.app → direct call
-const BASE_URL = import.meta.env.VITE_API_BASE_URL
-  ? `${import.meta.env.VITE_API_BASE_URL}/api/v1`
+const BASE_URL = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api/v1`
   : '/api/v1'
 
 const client = axios.create({
