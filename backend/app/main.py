@@ -93,6 +93,7 @@ async def health():
 @app.get("/auth/gmail")
 async def gmail_auth():
     auth_url = get_auth_url()
+    print("auth_url ::::", auth_url)
     return {"auth_url": auth_url}
 
 
