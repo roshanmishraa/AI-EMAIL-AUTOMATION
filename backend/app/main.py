@@ -124,14 +124,14 @@ async def oauth_callback(code: str, db: AsyncSession = Depends(get_db)):
 
         logger.info(f"✓ OAuth success for user: {user_email}")
 
-        frontend_url = settings.FRONTEND_URL or "http://localhost:5173"
+        frontend_url = os.getenv("FRONTEND_URL") or "http://localhost:5173"
         return RedirectResponse(
             url=f"{frontend_url}/login?auth=success&email={user_email}&user_id={user.id}"
         )
 
     except Exception as e:
         logger.error(f"OAuth callback failed: {e}")
-        frontend_url = settings.FRONTEND_URL or "http://localhost:5173"
+        frontend_url = os.getenv("FRONTEND_URL") or "http://localhost:5173"
         return RedirectResponse(
             url=f"{frontend_url}/login?auth=error&reason=oauth_failed"
         )
