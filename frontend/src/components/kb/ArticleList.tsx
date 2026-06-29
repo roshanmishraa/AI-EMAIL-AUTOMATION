@@ -1,4 +1,4 @@
-import { Trash2, FileText, FileType } from 'lucide-react'
+import { Trash2, FileText,  } from 'lucide-react'
 import { KBDoc } from '../../types/kb'
 import { formatDistanceToNow } from '../../types/date'
 

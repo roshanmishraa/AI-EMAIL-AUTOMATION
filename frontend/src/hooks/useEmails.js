@@ -1,0 +1,63 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getEmails, getEmail, approveReply, escalateEmail, resolveEscalation, processEmail, triggerFetch, } from '../api/emailsApi';
+export const useEmails = (params) => useQuery({
+    queryKey: ['emails', params],
+    queryFn: () => getEmails(params),
+    select: res => res.data,
+    refetchInterval: 30000,
+});
+export const useEmail = (id) => useQuery({
+    queryKey: ['email', id],
+    queryFn: () => getEmail(id),
+    select: res => res.data,
+    enabled: !!id,
+});
+export const useApproveReply = () => {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (id) => approveReply(id),
+        onSuccess: (_, id) => {
+            qc.invalidateQueries({ queryKey: ['email', id] });
+            qc.invalidateQueries({ queryKey: ['emails'] });
+        },
+    });
+};
+export const useEscalateEmail = () => {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (id) => escalateEmail(id),
+        onSuccess: (_, id) => {
+            qc.invalidateQueries({ queryKey: ['email', id] });
+            qc.invalidateQueries({ queryKey: ['emails'] });
+        },
+    });
+};
+// NEW: escalation resolve karne ka hook
+export const useResolveEscalation = () => {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: ({ id, notes }) => resolveEscalation(id, notes),
+        onSuccess: (_, { id }) => {
+            qc.invalidateQueries({ queryKey: ['email', id] });
+            qc.invalidateQueries({ queryKey: ['emails'] });
+        },
+    });
+};
+export const useProcessEmail = () => {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (id) => processEmail(id),
+        onSuccess: (_, id) => {
+            qc.invalidateQueries({ queryKey: ['email', id] });
+        },
+    });
+};
+export const useTriggerFetch = () => {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: () => triggerFetch(),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['emails'] });
+        },
+    });
+};
