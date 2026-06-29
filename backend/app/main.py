@@ -13,8 +13,7 @@ from app.db.session import engine, AsyncSessionLocal
 from app.db.base import Base
 from app.core.deps import get_db
 
-# CRITICAL: import all models before create_all so their tables are registered
-import app.models  # noqa: F401 — side-effect import registers all SQLAlchemy models
+import app.models  # noqa: F401
 
 from app.api.v1 import router as api_router
 from app.services.ai.rag import load_index
@@ -29,24 +28,28 @@ from app.models.user import User
 logger = logging.getLogger(__name__)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # ── DB startup ──────────────────────────────
+async def init_db():
+    """DB tables background mein banao — startup block nahi karega"""
     try:
         async with engine.begin() as conn:
             await asyncio.wait_for(
                 conn.run_sync(Base.metadata.create_all),
-                timeout=15.0,
+                timeout=30.0,
             )
         logger.info("✓ Database tables created/verified")
     except asyncio.TimeoutError:
         logger.error("❌ DB connection timeout — DATABASE_URL check karo")
-        raise
     except Exception as e:
-        logger.error(f"❌ DB startup error: {e}")
-        raise
+        logger.error(f"❌ DB init error: {e}")
 
-    # ── FAISS index ─────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # DB ko background task mein run karo — uvicorn ko block nahi karega
+    asyncio.create_task(init_db())
+    logger.info("✓ DB init task scheduled")
+
+    # FAISS index
     try:
         load_index()
         logger.info("✓ FAISS RAG index loaded")
@@ -82,17 +85,10 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api/v1")
 
 
-# ──────────────────────────────────────────
-# HEALTH CHECK
-# ──────────────────────────────────────────
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": "1.0.0"}
 
-
-# ──────────────────────────────────────────
-# OAUTH ROUTES
-# ──────────────────────────────────────────
 
 @app.get("/auth/gmail")
 async def gmail_auth():
