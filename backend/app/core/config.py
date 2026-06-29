@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # ==========================================================
     GMAIL_CLIENT_ID: str = ""
     GMAIL_CLIENT_SECRET: str = ""
-    GMAIL_REDIRECT_URI: str = "http://localhost:8000/oauth2callback"
+    # GMAIL_REDIRECT_URI: str = "http://localhost:8000/oauth2callback"
     GMAIL_TOKEN_PATH: str = "./storage/gmail_token.json"
 
     # 
@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     # ==========================================================
     # FRONTEND
     # ==========================================================
-    FRONTEND_URL: str = "http://localhost:5173"
+    # FRONTEND_URL: str = "http://localhost:5173"
      
 
     # ==========================================================

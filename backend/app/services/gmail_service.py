@@ -46,7 +46,7 @@ def get_oauth_flow() -> Flow:
         "web": {
             "client_id":                   settings.GMAIL_CLIENT_ID,
             "client_secret":               settings.GMAIL_CLIENT_SECRET,
-            "redirect_uris":               [settings.GMAIL_REDIRECT_URI],
+            "redirect_uris":               [os.getenv("GMAIL_REDIRECT_URI")],
             "auth_uri":                    "https://accounts.google.com/o/oauth2/auth",
             "token_uri":                   "https://oauth2.googleapis.com/token",
         }
@@ -54,7 +54,7 @@ def get_oauth_flow() -> Flow:
     flow = Flow.from_client_config(
         client_config,
         scopes=SCOPES,
-        redirect_uri=settings.GMAIL_REDIRECT_URI,
+        redirect_uri=os.getenv("GMAIL_REDIRECT_URI"),
         autogenerate_code_verifier=False,   # ← FIX: PKCE disabled (confidential client, client_secret already present)
     )
     return flow
