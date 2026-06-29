@@ -1,18 +1,37 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+    AsyncSession,
+    async_sessionmaker,
+)
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from app.core.config import settings
+import os
 
-# ──────────────────────────────────────────
-# ASYNC ENGINE — FastAPI ke liye (asyncpg)
-# ──────────────────────────────────────────
+# ==========================================================
+# Read database URLs from Environment Variables (.env/Railway)
+# ==========================================================
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+SYNC_DATABASE_URL = os.getenv("SYNC_DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is not set.")
+
+if not SYNC_DATABASE_URL:
+    raise ValueError("SYNC_DATABASE_URL environment variable is not set.")
+
+# ==========================================================
+# Async Engine (FastAPI)
+# ==========================================================
+
 engine = create_async_engine(
-    settings.DATABASE_URL,          # postgresql+asyncpg://
+    DATABASE_URL,
     echo=settings.APP_ENV == "development",
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
-    connect_args={"timeout": 10},   # ← Railway hang fix
+    connect_args={"timeout": 10},
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -21,18 +40,17 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False,
 )
 
-# ──────────────────────────────────────────
-# SYNC ENGINE — Celery tasks ke liye (psycopg2)
-# asyncpg Windows pe Celery ke saath event loop crash karta hai
-# psycopg2 sync driver is problem se free hai
-# ──────────────────────────────────────────
+# ==========================================================
+# Sync Engine (Celery / Background Jobs)
+# ==========================================================
+
 sync_engine = create_engine(
-    settings.SYNC_DATABASE_URL,     # postgresql://  (psycopg2)
+    SYNC_DATABASE_URL,
     echo=settings.APP_ENV == "development",
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,
-    connect_args={"connect_timeout": 10},  # ← psycopg2 ke liye alag param
+    connect_args={"connect_timeout": 10},
 )
 
 SyncSessionLocal = sessionmaker(
