@@ -1,14 +1,11 @@
-import os
 from logging.config import fileConfig
+import os  # ← THIS WAS MISSING
 from dotenv import load_dotenv
-
 from sqlalchemy import create_engine, pool
 from alembic import context
-
 from app.db.base import Base
 import app.models  # noqa: F401
 
-# .env file explicitly load karo
 load_dotenv()
 
 config = context.config
@@ -21,6 +18,8 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     url = os.getenv("SYNC_DATABASE_URL")
+    if not url:
+        raise ValueError("SYNC_DATABASE_URL environment variable not set")
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -33,6 +32,8 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     url = os.getenv("SYNC_DATABASE_URL")
+    if not url:
+        raise ValueError("SYNC_DATABASE_URL environment variable not set")
     connectable = create_engine(url, poolclass=pool.NullPool)
     with connectable.connect() as connection:
         context.configure(
