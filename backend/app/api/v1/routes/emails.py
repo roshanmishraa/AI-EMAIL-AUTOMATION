@@ -34,7 +34,11 @@ async def trigger_email_fetch():
 
 # GET THREAD — all emails in a Gmail thread — MUST be before /{email_id}
 @router.get("/thread/{gmail_thread_id}", response_model=EmailListOut)
-async def get_thread(gmail_thread_id: str, db: AsyncSession = Depends(get_db)):
+async def get_thread(
+    gmail_thread_id: str,
+    user_id: int = Query(..., description="Logged-in user ka ID — sirf unki hi thread aaye"),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(
         select(Email)
         .options(
@@ -42,6 +46,7 @@ async def get_thread(gmail_thread_id: str, db: AsyncSession = Depends(get_db)):
             selectinload(Email.escalations),  # ← FIXED
         )
         .where(Email.thread_id == gmail_thread_id)
+        .where(Email.user_id == user_id)   # ← NEW: multi-user isolation
         .order_by(Email.received_at.asc())
     )
     emails = result.scalars().all()
@@ -54,6 +59,7 @@ async def get_thread(gmail_thread_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/", response_model=EmailListOut)
 async def list_emails(
     db:        AsyncSession = Depends(get_db),
+    user_id:   int = Query(..., description="Logged-in user ka ID — sirf unke hi emails aaye"),
     status:    str = Query(None),
     category:  str = Query(None),
     sentiment: str = Query(None),
@@ -66,6 +72,7 @@ async def list_emails(
             selectinload(Email.replies),
             selectinload(Email.escalations),  # ← FIXED
         )
+        .where(Email.user_id == user_id)   # ← NEW: ye hi root-cause fix hai
         .order_by(Email.received_at.desc())
     )
 
@@ -86,7 +93,11 @@ async def list_emails(
 # GET SINGLE EMAIL (with replies + escalations)
 # ──────────────────────────────────────────
 @router.get("/{email_id}", response_model=EmailOut)
-async def get_email(email_id: int, db: AsyncSession = Depends(get_db)):
+async def get_email(
+    email_id: int,
+    user_id: int = Query(..., description="Ownership check ke liye"),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(
         select(Email)
         .options(
@@ -94,6 +105,7 @@ async def get_email(email_id: int, db: AsyncSession = Depends(get_db)):
             selectinload(Email.escalations),  # ← FIXED
         )
         .where(Email.id == email_id)
+        .where(Email.user_id == user_id)   # ← NEW: koi aur user ki email na khol sake
     )
     email = result.scalar_one_or_none()
 
@@ -109,6 +121,7 @@ async def get_email(email_id: int, db: AsyncSession = Depends(get_db)):
 @router.post("/{email_id}/reply")
 async def approve_and_send_reply(
     email_id: int,
+    user_id: int = Query(..., description="Ownership check ke liye"),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -118,6 +131,7 @@ async def approve_and_send_reply(
             selectinload(Email.escalations),  # ← FIXED
         )
         .where(Email.id == email_id)
+        .where(Email.user_id == user_id)   # ← NEW: ownership check
     )
     email = result.scalar_one_or_none()
 
@@ -181,8 +195,17 @@ async def approve_and_send_reply(
 # ESCALATE EMAIL (manual — agent khud decide karta hai)
 # ──────────────────────────────────────────
 @router.post("/{email_id}/escalate")
-async def escalate_email(email_id: int, db: AsyncSession = Depends(get_db)):
-    email = await db.get(Email, email_id)
+async def escalate_email(
+    email_id: int,
+    user_id: int = Query(..., description="Ownership check ke liye"),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Email)
+        .where(Email.id == email_id)
+        .where(Email.user_id == user_id)   # ← NEW: ownership check
+    )
+    email = result.scalar_one_or_none()
 
     if not email:
         raise HTTPException(status_code=404, detail="Email not found")
@@ -211,12 +234,15 @@ async def escalate_email(email_id: int, db: AsyncSession = Depends(get_db)):
 @router.post("/{email_id}/resolve-escalation")
 async def resolve_escalation(
     email_id: int,
+    user_id: int = Query(..., description="Ownership check ke liye"),
     notes: str = None,
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
         select(Escalation)
+        .join(Email, Escalation.email_id == Email.id)
         .where(Escalation.email_id == email_id)
+        .where(Email.user_id == user_id)   # ← NEW: ownership check
         .order_by(Escalation.id.desc())
     )
     escalation = result.scalars().first()
@@ -245,8 +271,17 @@ async def resolve_escalation(
 # RUN AI PIPELINE ON EXISTING EMAIL (manual)
 # ──────────────────────────────────────────
 @router.post("/{email_id}/process")
-async def process_email(email_id: int, db: AsyncSession = Depends(get_db)):
-    email = await db.get(Email, email_id)
+async def process_email(
+    email_id: int,
+    user_id: int = Query(..., description="Ownership check ke liye"),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Email)
+        .where(Email.id == email_id)
+        .where(Email.user_id == user_id)   # ← NEW: ownership check
+    )
+    email = result.scalar_one_or_none()
     if not email:
         raise HTTPException(status_code=404, detail="Email not found")
 

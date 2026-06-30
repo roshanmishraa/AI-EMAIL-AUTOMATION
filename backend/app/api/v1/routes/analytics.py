@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 import datetime
@@ -13,31 +13,43 @@ router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 
 @router.get("/dashboard", response_model=DashboardStats)
-async def get_dashboard(db: AsyncSession = Depends(get_db)):
+async def get_dashboard(
+    user_id: int = Query(..., description="Logged-in user ka ID — sirf unka data aaye"),
+    db: AsyncSession = Depends(get_db),
+):
 
     # ── TOTAL EMAILS ──────────────────────────────────────
-    total_result = await db.execute(select(func.count(Email.id)))
+    total_result = await db.execute(
+        select(func.count(Email.id)).where(Email.user_id == user_id)
+    )
     total_emails = total_result.scalar() or 0
 
     # ── STATUS COUNTS ─────────────────────────────────────
     processed_result = await db.execute(
-        select(func.count(Email.id)).where(Email.status == EmailStatus.processed)
+        select(func.count(Email.id))
+        .where(Email.status == EmailStatus.processed)
+        .where(Email.user_id == user_id)
     )
     processed = processed_result.scalar() or 0
 
     escalated_result = await db.execute(
-        select(func.count(Email.id)).where(Email.status == EmailStatus.escalated)
+        select(func.count(Email.id))
+        .where(Email.status == EmailStatus.escalated)
+        .where(Email.user_id == user_id)
     )
     escalated = escalated_result.scalar() or 0
 
     replied_result = await db.execute(
-        select(func.count(Email.id)).where(Email.status == EmailStatus.replied)
+        select(func.count(Email.id))
+        .where(Email.status == EmailStatus.replied)
+        .where(Email.user_id == user_id)
     )
     replied = replied_result.scalar() or 0
 
     # ── CATEGORY DISTRIBUTION ─────────────────────────────
     cat_result = await db.execute(
         select(Email.category, func.count(Email.id))
+        .where(Email.user_id == user_id)
         .group_by(Email.category)
     )
     category_distribution = {
@@ -49,6 +61,7 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
     # ── SENTIMENT DISTRIBUTION ────────────────────────────
     sent_result = await db.execute(
         select(Email.sentiment, func.count(Email.id))
+        .where(Email.user_id == user_id)
         .group_by(Email.sentiment)
     )
     sentiment_distribution = {
@@ -59,14 +72,17 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
 
     # ── AVG CONFIDENCE ────────────────────────────────────
     conf_result = await db.execute(
-        select(func.avg(Email.confidence_score))
+        select(func.avg(Email.confidence_score)).where(Email.user_id == user_id)
     )
     avg_confidence = conf_result.scalar() or 0
 
     # ── TOP ESCALATION REASONS ────────────────────────────
     # FIX: .value gives "low_confidence" not "EscalationReason.low_confidence"
+    # NEW: Escalation table mein user_id nahi hai, isliye Email se join karke filter karo
     esc_reason_result = await db.execute(
         select(Escalation.reason, func.count(Escalation.id))
+        .join(Email, Escalation.email_id == Email.id)
+        .where(Email.user_id == user_id)
         .group_by(Escalation.reason)
     )
     escalation_reasons = {
@@ -84,6 +100,7 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
             .join(Email, EmailReply.email_id == Email.id)
             .where(Email.received_at.isnot(None))
             .where(EmailReply.created_at.isnot(None))
+            .where(Email.user_id == user_id)
         )
         rows = rt_result.all()
         if rows:
@@ -114,6 +131,7 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
                 .where(Email.received_at >= day_start)
                 .where(Email.received_at <= day_end)
                 .where(Email.sentiment.isnot(None))
+                .where(Email.user_id == user_id)
                 .group_by(Email.sentiment)
             )
             # FIX: .value here too
