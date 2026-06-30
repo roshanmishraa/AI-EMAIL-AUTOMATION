@@ -110,6 +110,7 @@ async def oauth_callback(code: str, db: AsyncSession = Depends(get_db)):
 
         if user:
             user.gmail_token = json.dumps(token_data)
+            user.is_active   = True   # ── Relogin pe wapas active karo (pichli baar disconnect kiya tha to)
             import datetime
             user.last_seen = datetime.datetime.utcnow()
         else:
@@ -152,3 +153,27 @@ async def get_current_user(user_id: int, db: AsyncSession = Depends(get_db)):
         "created_at": user.created_at,
         "last_seen":  user.last_seen,
     }
+
+
+@app.post("/auth/disconnect")
+async def disconnect_account(user_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Gmail account disconnect karo — sirf frontend logout se kaafi nahi tha,
+    Celery poller is_active=True users ko backend mein hamesha poll karta
+    rehta tha chahe browser session khatam ho chuka ho. Yeh route:
+      1. is_active = False set karta hai → poller is user ko skip karega
+      2. gmail_token clear karta hai → koi stale token use na ho
+    """
+    result = await db.execute(select(User).where(User.id == user_id))
+    user   = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.is_active   = False
+    user.gmail_token = None
+    await db.commit()
+
+    logger.info(f"✓ Account disconnected: {user.email}")
+
+    return {"status": "disconnected", "email": user.email}
