@@ -21,6 +21,17 @@ const client = axios.create({
   },
 })
 
+// NEW: har request ke saath logged-in user_id automatically bhejo
+// Pehle koi bhi request user_id nahi bhejti thi, isliye backend
+// sabka data mix karke deta tha (Inbox/Analytics dynamic nahi the)
+client.interceptors.request.use(config => {
+  const userId = localStorage.getItem('user_id')
+  if (userId) {
+    config.params = { ...config.params, user_id: Number(userId) }
+  }
+  return config
+})
+
 client.interceptors.response.use(
   res => res,
   err => {

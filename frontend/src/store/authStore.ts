@@ -4,9 +4,13 @@
 //         Pehle sirf localStorage clear hota tha — backend ko pata
 //         hi nahi chalta tha, isliye Celery poller is_active=True
 //         user ko hamesha poll karta rehta tha "sign out" ke baad bhi.
+// NEW: login() aur logout() dono ab queryClient.clear() bhi karte hain
+//      taaki purane account ka cached React Query data naye account
+//      ke saath mix na ho ya flash na ho.
 // ============================================================
 
 import { create } from 'zustand'
+import { queryClient } from '../lib/queryClient'
 
 // /auth/* routes backend mein /api/v1 prefix ke bina hain (main.py mein
 // directly @app.get/@app.post) — isliye axiosClient (jo /api/v1 jodta hai)
@@ -35,6 +39,7 @@ export const useAuthStore = create<AuthState>(set => ({
   login: (userId, email) => {
     localStorage.setItem('user_id',    String(userId))
     localStorage.setItem('user_email', email)
+    queryClient.clear()   // NEW: koi purana cached data carry-over na ho
     set({ userId, userEmail: email, isLoggedIn: true })
   },
 
@@ -57,6 +62,7 @@ export const useAuthStore = create<AuthState>(set => ({
 
     localStorage.removeItem('user_id')
     localStorage.removeItem('user_email')
+    queryClient.clear()   // NEW: purana account ka cached data hata do
     set({ userId: null, userEmail: null, isLoggedIn: false })
   },
 }))
