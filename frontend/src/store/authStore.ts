@@ -1,11 +1,18 @@
 // ============================================================
 // FILE:  frontend/src/store/authStore.ts
-// NEW FILE: User login state manage karne ke liye
-//           localStorage mein user_id + email store hota hai
-//           taaki page refresh pe bhi login rahe
+// CHANGE: logout() ab backend /auth/disconnect bhi call karta hai
+//         Pehle sirf localStorage clear hota tha — backend ko pata
+//         hi nahi chalta tha, isliye Celery poller is_active=True
+//         user ko hamesha poll karta rehta tha "sign out" ke baad bhi.
 // ============================================================
 
 import { create } from 'zustand'
+
+// /auth/* routes backend mein /api/v1 prefix ke bina hain (main.py mein
+// directly @app.get/@app.post) — isliye axiosClient (jo /api/v1 jodta hai)
+// use nahi kar sakte. Yehi pattern LoginPage.tsx mein bhi /auth/gmail
+// ke liye use hota hai.
+const BACKEND_URL = import.meta.env.VITE_API_URL ?? ''
 
 interface AuthState {
   userId:    number | null
@@ -13,7 +20,7 @@ interface AuthState {
   isLoggedIn: boolean
 
   login:  (userId: number, email: string) => void
-  logout: () => void
+  logout: () => Promise<void>
 }
 
 // localStorage se existing session restore karo
@@ -31,7 +38,23 @@ export const useAuthStore = create<AuthState>(set => ({
     set({ userId, userEmail: email, isLoggedIn: true })
   },
 
-  logout: () => {
+  logout: async () => {
+    const userId = localStorage.getItem('user_id')
+
+    // Backend ko bata do account disconnect ho raha hai —
+    // is_active=False set hoga, gmail_token clear hoga,
+    // taaki Celery poller is account ko skip kare
+    if (userId) {
+      try {
+        await fetch(`${BACKEND_URL}/auth/disconnect?user_id=${userId}`, {
+          method: 'POST',
+        })
+      } catch (e) {
+        // Backend call fail bhi ho jaye, local logout fir bhi hona chahiye
+        console.error('[Disconnect Error]', e)
+      }
+    }
+
     localStorage.removeItem('user_id')
     localStorage.removeItem('user_email')
     set({ userId: null, userEmail: null, isLoggedIn: false })
