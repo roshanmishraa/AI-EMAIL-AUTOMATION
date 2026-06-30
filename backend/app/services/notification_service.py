@@ -11,7 +11,7 @@ import httpx
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-
+import os
 from app.core.config import settings
 
 
@@ -19,7 +19,7 @@ from app.core.config import settings
 # SLACK ALERT
 # ──────────────────────────────────────────
 async def _send_slack_alert(email_id: int, reason: str) -> bool:
-    frontend_url = settings.FRONTEND_URL or "http://localhost:5173"
+    frontend_url = os.getenv("FRONTEND_URL") or "http://localhost:5173"
     message = f"""
 🚨 ESCALATION ALERT
 Email ID: {email_id}
@@ -57,7 +57,7 @@ def _send_email_alert(email_id: int, reason: str) -> bool:
         print("[Notification] SMTP_USER or SMTP_PASS not configured — skipping email alert")
         return False
 
-    frontend_url = settings.FRONTEND_URL or "http://localhost:5173"
+    frontend_url = os.getenv("FRONTEND_URL") or "http://localhost:5173"
 
     try:
         msg = MIMEMultipart("alternative")
