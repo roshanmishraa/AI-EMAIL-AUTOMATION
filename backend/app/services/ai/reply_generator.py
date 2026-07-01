@@ -55,6 +55,9 @@ Rules:
 - If KB context is missing or irrelevant: confidence_score = 40, escalation_flag = false
 - ONLY set escalation_flag = true if category is 'legal'
 - Never set escalation_flag = true just because you are unsure
+- Do NOT include a subject line in draft_reply
+- Start directly with the greeting line e.g. "Dear [Name]," or "Hello,"
+- draft_reply must contain ONLY the email body, nothing else
 """),
     ("human", """\
 Subject: {subject}
@@ -80,7 +83,7 @@ async def generate_reply(
     # ── 1. Category-filtered RAG retrieval (KEY FIX) ──
     kb_chunks = await retrieve_relevant_chunks(
         query=body,
-        category=category,   # only pull chunks tagged for this category
+        category=category,
     )
     kb_context = (
         "\n\n---\n\n".join(kb_chunks)
@@ -121,7 +124,7 @@ async def generate_reply(
                 "our team will review it shortly. We apologise for any inconvenience."
             ),
             confidence_score=40.0,
-            escalation_flag=True,       # low confidence → auto escalate
+            escalation_flag=True,
             escalation_reason="llm_error",
             tone_used="fallback",
         )
